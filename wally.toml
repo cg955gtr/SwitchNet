@@ -1,7 +1,7 @@
 [package]
 name = "cg955gtr/switchnet"
 description = "A blazingly fast and easy to use networking module for reducing bandwidth and overhead across remotes."
-version = "0.0.0"
+version = "0.0.1"
 license = "MIT"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
