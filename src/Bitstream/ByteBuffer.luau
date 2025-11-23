@@ -215,7 +215,7 @@ function ByteBuffer.ReadString(self: ByteBuffer, Limit: number?): string
 
 	local String: string = buffer.readstring(Buffer, Pointer, Size)
 
-	self.Pointer = Pointer + Size
+	self.Pointer += 2 + Size
 
 	return String
 end
@@ -358,7 +358,7 @@ function ByteBuffer.ReadTweenInfo(self: ByteBuffer): TweenInfo
 
 	self.Pointer += 15
 
-	local Time: number = buffer.readf32(Buffer, 0)
+	local Time: number = buffer.readf32(Buffer, Pointer)
 
 	local EasingStyleValue: number = buffer.readu8(Buffer, Pointer + 4)
 	local EasingDirectionValue: number = buffer.readu8(Buffer, Pointer + 5)
