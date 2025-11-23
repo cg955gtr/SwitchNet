@@ -1,0 +1,12 @@
+{
+  "name": "rbx-network",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "SwitchNet": {
+        "$path": "src"
+      }
+    }
+  }
+}

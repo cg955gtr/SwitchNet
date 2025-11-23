@@ -1,0 +1,263 @@
+--[==[
+	Author: 8ch99
+	File: Client.luau
+	Date written: 15th November 2025
+	Last edited: 23rd November 2025
+]==]
+
+--!strict
+--!native
+--!optimize 2
+
+local ACTIVE_REMOTES = {}
+
+--// Dependencies
+
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TestService = game:GetService("TestService")
+
+local Bitstream = require("./Bitstream")
+
+local Create = Bitstream.Create
+local Read = Bitstream.Read
+
+export type OnClientEventCallback = {
+	Reliable: boolean,
+	Function: (...any) -> (),
+}
+
+export type NetworkPacket = {
+	Data: buffer,
+	References: Bitstream.References,
+}
+
+export type SendPacket = {
+	Data: { any },
+}
+
+export type Client = {
+	Name: string,
+
+	_onClientInvokeCallback: ((Player, ...any) -> ...any)?,
+	_onClientEventCallbacks: { [string]: OnClientEventCallback },
+
+	_sendStack: { SendPacket },
+	_sendStackUnr: { SendPacket },
+
+	_remoteContainer: Folder,
+	
+	_remoteEvent: RemoteEvent,
+	_unrRemoteEvent: UnreliableRemoteEvent,
+	_remoteFunction: RemoteFunction,
+
+	_onClientEvent: RBXScriptConnection,
+	_onUnrClientEvent: RBXScriptConnection,
+	_replicationHandler: RBXScriptConnection,
+}
+
+--// @module Client
+
+local Client = {}
+
+--// Main methods
+
+function Client.new(Name: string): Client
+	assert(ACTIVE_REMOTES[Name] == nil, `remote bridge '{Name}' already exists!`)
+	ACTIVE_REMOTES[Name] = true
+
+	local self = {} :: Client
+
+	self.Name = Name
+
+	self._onClientEventCallbacks = {} :: { [string]: OnClientEventCallback }
+	self._sendStack = {} :: { SendPacket }
+	self._sendStackUnr = {} :: { SendPacket }
+
+	self._remoteContainer = ReplicatedStorage:WaitForChild(Name) :: Folder
+	self._remoteEvent = self._remoteContainer:WaitForChild("Reliable") :: RemoteEvent
+	self._unrRemoteEvent = self._remoteContainer:WaitForChild("Unreliable") :: UnreliableRemoteEvent
+	self._remoteFunction = self._remoteContainer:WaitForChild("Function") :: RemoteFunction
+
+	local HandleIncomingRequest = Client._handleIncomingRequest
+	local HandleSendStack = Client._handleSendStack
+
+	self._onClientEvent = self._remoteEvent.OnClientEvent:Connect(function(IncomingData: { NetworkPacket })
+		for _, Packet: NetworkPacket in IncomingData do
+			HandleIncomingRequest(self, true, Packet.Data, Packet.References)
+		end
+	end)
+
+	self._onUnrClientEvent = self._unrRemoteEvent.OnClientEvent:Connect(function(IncomingData: { NetworkPacket })
+		for _, Packet: NetworkPacket in IncomingData do
+			HandleIncomingRequest(self, false, Packet.Data, Packet.References)
+		end
+	end)
+
+	self._replicationHandler = RunService.PostSimulation:Connect(function()
+		debug.profilebegin("SwitchNet.Client._replicationHandler")
+
+		if #self._sendStack > 0 then
+			HandleSendStack(self, true)
+		end
+
+		if #self._sendStackUnr > 0 then
+			HandleSendStack(self, false)
+		end
+
+		debug.profileend()
+	end)
+
+	self._remoteFunction.OnClientInvoke = function(IncomingData: NetworkPacket)
+		if not self._onClientInvokeCallback then
+			return nil
+		end
+
+		debug.profilebegin("SwitchNet.Client.OnClientInvoke")
+
+		local Results: { n: number, [number]: any } = { n = 0 }
+
+		if IncomingData then
+			local Success: boolean, Args: { n: number, [number]: any } = pcall(Read, IncomingData.Data, IncomingData.References)
+
+			if Success then
+				Results = table.pack(pcall(self._onClientInvokeCallback, table.unpack(Args, 1, Args.n)))
+				
+				if table.remove(Results, 1) == false then
+					Results = { n = 0 }
+				end
+			end
+		end
+
+		if Results.n == 0 then
+			return nil
+		end
+
+		local Buffer: buffer, References: Bitstream.References = Create(table.unpack(Results, 1, Results.n))
+
+		debug.profileend()
+
+		return {
+			Data = Buffer,
+			References = References,
+		}
+	end
+
+	return self
+end
+
+function Client.Destroy(self: Client)
+	self._replicationHandler:Disconnect()
+	self._onUnrClientEvent:Disconnect()
+	self._onClientEvent:Disconnect()
+
+	table.clear(self._onClientEventCallbacks)
+	table.clear(self._sendStack)
+	table.clear(self._sendStackUnr)
+	
+	table.clear(self)
+
+	self = nil :: never
+end
+
+function Client.Connect(self: Client, Name: string, Function: (Player, ...any) -> (), Unreliable: boolean?)
+	local Callback: OnClientEventCallback = {
+		Reliable = not Unreliable,
+		Function = Function,
+	}
+
+	self._onClientEventCallbacks[Name] = Callback
+end
+
+function Client.Disconnect(self: Client, Name: string)
+	self._onClientEventCallbacks[Name] = nil
+end
+
+function Client.SetOnInvoke(self: Client, Function: (Player, ...any) -> ...any)
+	self._onClientInvokeCallback = Function
+	
+end
+
+function Client.FireServer(self: Client, ...: any)
+	table.insert(self._sendStack, {
+		Data = { ... },
+	})
+end
+
+function Client.FireServerUnreliable(self: Client, ...: any)
+	table.insert(self._sendStackUnr, {
+		Data = { ... },
+	})
+end
+
+function Client.InvokeServer(self: Client, ...: any): ...any
+	local Data: buffer, References: Bitstream.References = Create(...)
+	local ResponsePacket: NetworkPacket
+
+	local Success: boolean, Error: string? = pcall(function()
+		ResponsePacket = self._remoteFunction:InvokeServer({
+			Data = Data,
+			References = References,
+		})
+	end)
+
+	if not Success then
+		warn(`InvokeServer failed! Error:\n{Error}`)
+		return nil
+	end
+
+	if ResponsePacket == nil then
+		return nil
+	end
+	
+	local Response: { n: number, [number]: any } = Read(ResponsePacket.Data, ResponsePacket.References)
+
+	return table.unpack(Response, 1, Response.n)
+end
+
+--// Private methods
+
+function Client._handleIncomingRequest(self: Client, Reliable: boolean, Data: buffer, References: Bitstream.References)
+	if not next(self._onClientEventCallbacks) then
+		return
+	end
+
+	debug.profilebegin("SwitchNet.Client._handleIncomingRequest")
+
+	local Args: { n: number, [number]: any } = Read(Data, References)
+
+	for Name, Callback: OnClientEventCallback in self._onClientEventCallbacks do
+		if Callback.Reliable == Reliable then
+			local Success: boolean, Error: any = pcall(task.spawn, Callback.Function, table.unpack(Args, 1, Args.n))
+
+			if not Success then
+				TestService:Error(`NetworkClient '{self.Name}' Callback Error:\n{Error}`)
+			end
+		end
+	end
+
+	debug.profileend()
+end
+
+function Client._handleSendStack(self: Client, Reliable: boolean)
+	local Remote = if Reliable then self._remoteEvent else self._unrRemoteEvent
+	local Stack: { SendPacket } = if Reliable then self._sendStack else self._sendStackUnr
+
+	local NetworkPackets: { NetworkPacket } = {}
+
+	for _, Packet: SendPacket in Stack do
+		local Buffer: buffer, References: Bitstream.References = Bitstream.Create(table.unpack(Packet.Data))
+
+		table.insert(NetworkPackets, {
+			Data = Buffer,
+			References = References,
+		})
+	end
+
+	table.clear(Stack);
+	
+	(Remote :: RemoteEvent):FireServer(NetworkPackets)
+	--// ^ I hate the typechecker
+end
+
+return Client
