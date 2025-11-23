@@ -224,7 +224,7 @@ return {
 					References.Data[NewCount] = i
 				else
 					WriteUInt8(Buffer, IndexType.Enum.Value)
-					IndexType.Writer(Buffer, References, i)
+					IndexType.Writer(Buffer, References, i, IndexTypeInfo.ExtraTypes)
 				end
 
 				--// Value
@@ -241,7 +241,7 @@ return {
 					References.Data[NewCount] = v
 				else
 					WriteUInt8(Buffer, ValueType.Enum.Value)
-					ValueType.Writer(Buffer, References, v)
+					ValueType.Writer(Buffer, References, v, ValueTypeInfo.ExtraTypes)
 				end
 			end
 		else
@@ -268,7 +268,7 @@ return {
 				else
 					--// OTHER
 					WriteUInt8(Buffer, Type.Enum.Value)
-					Type.Writer(Buffer, References, v)
+					Type.Writer(Buffer, References, v, TypeInfo.ExtraTypes)
 				end
 			end
 		end
