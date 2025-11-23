@@ -9,6 +9,13 @@
 --!native
 --!optimize 2
 
+export type StreamTypeMap = {
+	Type: any | string,
+	ExtraTypes: { [any]: any }?,
+}
+
+--// ^ not proper, but it works
+
 local Bitstream
 
 local ByteBuffer = require("../ByteBuffer")
@@ -30,11 +37,11 @@ return {
 		TypesFromValue = Bitstream.TypesFromValue
 	end,
 
-	GetSize = function(Value: { [any]: any }): (number, { any })
+	GetSize = function(Value: { [any]: any }): (number, { [any]: StreamTypeMap })
 		local Size: number = 3
 		local Type: number = 0
 
-		local Types: { any } = {}
+		local Types: { [any]: StreamTypeMap } = {}
 
 		if Value[1] then
 			Type = 1
@@ -53,10 +60,12 @@ return {
 			return Size, Types
 		end
 
-		local PreviousValue: any, PreviousValueSize: number, PreviousValueType: any
+		local PreviousValue: any, PreviousValueSize: number, PreviousValueType: StreamTypeMap
 
 		if Type == 1 then
-			for _, v: any in Value do
+			for i: number = 1, TableSize do
+				local v: any = Value[i]
+
 				if v ~= PreviousValue then
 					PreviousValue = v
 					PreviousValueSize, PreviousValueType = GetValueSizeAndType(v)
@@ -64,15 +73,15 @@ return {
 
 				Size += PreviousValueSize
 
-				table.insert(Types, PreviousValueType)
+				Types[i] = PreviousValueType
 			end
 		else
-			local PreviousIndex: any, PreviousIndexSize: number, PreviousIndexType: any
+			local PreviousIndex: any, PreviousIndexSize: number, PreviousIndexType: StreamTypeMap
 
 			for i: any, v: any in Value do
 				if i ~= PreviousIndex then
 					PreviousIndex = i
-					PreviousIndexSize, PreviousIndexType = GetValueSizeAndType(v)
+					PreviousIndexSize, PreviousIndexType = GetValueSizeAndType(i)
 				end
 
 				if v ~= PreviousValue then
@@ -82,8 +91,13 @@ return {
 
 				Size += PreviousIndexSize + PreviousValueSize
 
-				table.insert(Types, PreviousIndexType)
-				table.insert(Types, PreviousValueType)
+				if not Types[i] then
+					Types[i] = PreviousIndexType
+				end
+
+				if not Types[v] then
+					Types[v] = PreviousValueType
+				end
 			end
 		end
 
@@ -167,7 +181,7 @@ return {
 		return Table
 	end,
 
-	Writer = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }, Value: { [any]: any }, Types: { any })
+	Writer = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }, Value: { [any]: any }, Types: { StreamTypeMap })
 		local TableType: number = 0
 
 		if Value[1] then
@@ -197,7 +211,8 @@ return {
 		if TableType == 0 then
 			for i: any, v: any in Value do
 				--// Index
-				local IndexType: any = Types[i]
+				local IndexTypeInfo: StreamTypeMap = Types[i]
+				local IndexType: any = IndexTypeInfo.Type
 
 				if IndexType == "REFERENCE" then
 					local NewCount: number = References.Count + 1
@@ -213,7 +228,8 @@ return {
 				end
 
 				--// Value
-				local ValueType: any = Types[v]
+				local ValueTypeInfo: StreamTypeMap = Types[v]
+				local ValueType: any = ValueTypeInfo.Type
 
 				if ValueType == "REFERENCE" then
 					local NewCount: number = References.Count + 1
@@ -237,7 +253,8 @@ return {
 					continue
 				end
 
-				local Type: any = Types[i]
+				local TypeInfo: StreamTypeMap = Types[i]
+				local Type: any = TypeInfo.Type
 
 				if Type == "REFERENCE" then
 					--// REFERENCE

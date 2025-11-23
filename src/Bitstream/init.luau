@@ -33,7 +33,7 @@ export type StreamType = {
 	GetSize: ((Value: any) -> (number, any?))?,
 	
 	Reader: (Buffer: ByteBuffer.ByteBuffer, References: References) -> any,
-	Writer: (Buffer: ByteBuffer.ByteBuffer, References: References, Value: any, Types: { StreamType | string }?) -> (),
+	Writer: (Buffer: ByteBuffer.ByteBuffer, References: References, Value: any, Types: { [any]: StreamTypeMap }?) -> (),
 	Enum: StreamEnum,
 }
 
@@ -45,6 +45,11 @@ export type StreamEnum = {
 export type References = {
 	Count: number,
 	Data: { any },
+}
+
+export type StreamTypeMap = {
+	Type: StreamType | string,
+	ExtraTypes: { [any]: StreamTypeMap }?,
 }
 
 --// @module Bitstream
@@ -99,12 +104,12 @@ local function AddToReferences(Buffer: ByteBuffer.ByteBuffer, References: Refere
 	References.Data[NewCount] = Value
 end
 
-local function GetValueSizeAndType(Value: any, NoHeader: boolean?): (number, StreamType | string, { StreamType | string }?)
+local function GetValueSizeAndType(Value: any, NoHeader: boolean?): (number, StreamTypeMap)
 	debug.profilebegin("Bitstream._getValueSizeAndType")
 
 	local Size: number = if NoHeader then 0 else 1
 	local Type: StreamType?
-	local ExtraTypes: { StreamType | string }?
+	local ExtraTypes: { [any]: StreamTypeMap }?
 
 	if Value ~= nil then
 		Type = Types[typeof(Value)] or Types[type(Value)]
@@ -118,7 +123,7 @@ local function GetValueSizeAndType(Value: any, NoHeader: boolean?): (number, Str
 			else
 				local GetSize = Type.GetSize
 				if GetSize then
-					local __size: number, _extraTypes: { StreamType | string }? = GetSize(Value)
+					local __size: number, _extraTypes: { [any]: StreamTypeMap }? = GetSize(Value)
 					
 					Size += __size
 
@@ -135,7 +140,12 @@ local function GetValueSizeAndType(Value: any, NoHeader: boolean?): (number, Str
 
 	debug.profileend()
 
-	return Size, if Type then Type else "REFERENCE", ExtraTypes
+	local StreamTypeMap: StreamTypeMap = {
+		Type = if Type then Type else "REFERENCE",
+		ExtraTypes = ExtraTypes,
+	}
+
+	return Size, StreamTypeMap
 end
 
 Bitstream.AddToReferences = AddToReferences
@@ -187,19 +197,16 @@ function Bitstream.Create(...: any): (buffer, References)
 	local Data: { n: number, [number]: any } = table.pack(...)
 	local DataCount: number = Data.n
 
-	local DataTypes: { { Type: StreamType | string, ExtraTypes: { StreamType | string }? } } = {}
+	local DataTypes: { StreamTypeMap } = {}
 	local BufferSize: number = 2 + #HEADER + 2
 
 	--// First step, calculate buffer size
 	for i: number = 1, DataCount do
-		local Size: number, Type: StreamType | string, ExtraTypes: { StreamType | string }? = GetValueSizeAndType(Data[i])
+		local Size: number, Type: StreamTypeMap = GetValueSizeAndType(Data[i])
 
 		BufferSize += Size
 
-		DataTypes[i] = {
-			Type = Type,
-			ExtraTypes = ExtraTypes
-		}
+		DataTypes[i] = Type
 	end
 	
 	--// Now create the buffer
@@ -221,7 +228,7 @@ function Bitstream.Create(...: any): (buffer, References)
 			continue
 		end
 
-		local TypeInfo: { Type: StreamType | string, ExtraTypes: { StreamType | string }? } = DataTypes[i]
+		local TypeInfo: StreamTypeMap = DataTypes[i]
 		local Type: StreamType | string = TypeInfo.Type
 		
 		if Type == "REFERENCE" then
@@ -235,7 +242,7 @@ function Bitstream.Create(...: any): (buffer, References)
 		else
 			--// OTHER
 			local RealType: StreamType = Type :: StreamType
-			local ExtraTypes: { StreamType | string }? = TypeInfo.ExtraTypes
+			local ExtraTypes: { [any]: StreamTypeMap }? = TypeInfo.ExtraTypes
 
 			WriteUInt8(Buffer, RealType.Enum.Value)
 			RealType.Writer(Buffer, References, Value, ExtraTypes)
