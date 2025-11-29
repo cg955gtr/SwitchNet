@@ -1,8 +1,8 @@
 --[==[
 	Author: 8ch99
-	File: Vector3int16.luau
+	File: Vector2int16.luau
 	Date written: 15th November 2025
-	Last edited: 15th November 2025
+	Last edited: 29th November 2025
 ]==]
 
 --!strict
@@ -11,18 +11,30 @@
 
 local ByteBuffer = require("../ByteBuffer")
 
-local ReadVector3int16 = ByteBuffer.ReadVector3int16
-
-local WriteVector3int16 = ByteBuffer.WriteVector3int16
-
 return {
 	Size = 6,
 
 	Reader = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }): Vector3int16
-		return ReadVector3int16(Buffer)
+		local _buffer: buffer = Buffer._buffer
+		local Pointer: number = Buffer.Pointer
+
+		Buffer.Pointer += 6
+
+		return Vector3int16.new(
+			buffer.readi16(_buffer, Pointer),
+			buffer.readi16(_buffer, Pointer + 2),
+			buffer.readi16(_buffer, Pointer + 6)
+		)
 	end,
 
 	Writer = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }, Value: Vector3int16)
-		WriteVector3int16(Buffer, Value)
+		local _buffer: buffer = Buffer._buffer
+		local Pointer: number = Buffer.Pointer
+
+		Buffer.Pointer += 6
+
+		buffer.writei16(_buffer, Pointer, Value.X)
+		buffer.writei16(_buffer, Pointer + 2, Value.Y)
+		buffer.writei16(_buffer, Pointer + 4, Value.Z)
 	end,
 }

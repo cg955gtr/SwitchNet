@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: buffer.luau
 	Date written: 15th November 2025
-	Last edited: 15th November 2025
+	Last edited: 29th November 2025
 ]==]
 
 --!strict
@@ -11,20 +11,40 @@
 
 local ByteBuffer = require("../ByteBuffer")
 
-local WriteString = ByteBuffer.WriteString
-
-local ReadString = ByteBuffer.ReadString
-
 return {
 	GetSize = function(Value: buffer): number
-		return 2 + buffer.len(Value)
+		return 4 + buffer.len(Value)
 	end,
 
 	Reader = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }): buffer
-		return buffer.fromstring(ReadString(Buffer))
+		local _buffer: buffer = Buffer._buffer
+		local Pointer: number = Buffer.Pointer
+
+		local Size: number = buffer.readu32(_buffer, Pointer)
+
+		Buffer.Pointer += 4 + Size
+
+		if Size == 0 then
+			return buffer.create(0)
+		end
+
+		local String: string = buffer.readstring(_buffer, Pointer + 4, Size)
+
+		return buffer.fromstring(String)
 	end,
 
 	Writer = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }, Value: buffer)
-		WriteString(Buffer, buffer.tostring(Value))
+		local _buffer: buffer = Buffer._buffer
+		local Pointer: number = Buffer.Pointer
+
+		local Size: number = buffer.len(Value)
+
+		Buffer.Pointer += 4 + Size
+
+		buffer.writeu32(_buffer, Pointer, Size)
+		
+		if Size > 0 then
+			buffer.writestring(_buffer, Pointer + 4, buffer.tostring(Value))
+		end
 	end,
 }

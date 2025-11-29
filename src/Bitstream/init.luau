@@ -11,22 +11,12 @@
 
 --// Dependencies
 
---local EncodingService = game:GetService("EncodingService")
-
 local HEADER: string = "\16\26"
 local BUFFER_SIZE_LIMIT: number = 1048575 --// 2 ^ 20 - 1
 
 local ByteBuffer = require("@self/ByteBuffer")
 
 local fromBuffer = ByteBuffer.fromBuffer
-
-local ReadUInt8 = ByteBuffer.ReadUInt8
-local ReadUInt16 = ByteBuffer.ReadUInt16
-local ReadString = ByteBuffer.ReadString
-
-local WriteUInt8 = ByteBuffer.WriteUInt8
-local WriteUInt16 = ByteBuffer.WriteUInt16
-local WriteString = ByteBuffer.WriteString
 
 export type StreamType = {
 	Size: number?,
@@ -78,30 +68,21 @@ local function GetAndCheckRemoteData(Data: buffer, References: References): (Byt
 	local Size: number = buffer.len(Data)
 	assert(Size <= BUFFER_SIZE_LIMIT, "buffer too large!")
 
-	local Buffer: ByteBuffer.ByteBuffer = fromBuffer(Data)
-
 	--// Read header
-	assert(ReadString(Buffer, #HEADER) == HEADER, "invalid data sequence provided (unknown header)")
+	assert(buffer.readstring(Data, 0, #HEADER) == HEADER, "invalid data sequence provided (unknown header)")
 
 	--// Read element count, and check
-	local ElementCount: number = ReadUInt16(Buffer)
+	local ElementCount: number = buffer.readu16(Data, #HEADER)
 
 	assert(ElementCount <= (Size // 2), "invalid data sequence provided (element size is too high relative to buffer size)")
+
+	local Buffer: ByteBuffer.ByteBuffer = fromBuffer(Data)
+	Buffer.Pointer += #HEADER + 2
 
 	debug.profileend()
 
 	--// Return bit buffer + element count
 	return Buffer, ElementCount
-end
-
-local function AddToReferences(Buffer: ByteBuffer.ByteBuffer, References: References, Value: any)
-	local NewCount: number = References.Count + 1
-	References.Count = NewCount
-
-	WriteUInt8(Buffer, 255)
-	WriteUInt16(Buffer, NewCount)
-	
-	References.Data[NewCount] = Value
 end
 
 local function GetValueSizeAndType(Value: any, NoHeader: boolean?): (number, StreamTypeMap)
@@ -148,7 +129,6 @@ local function GetValueSizeAndType(Value: any, NoHeader: boolean?): (number, Str
 	return Size, StreamTypeMap
 end
 
-Bitstream.AddToReferences = AddToReferences
 Bitstream._getValueSizeAndType = GetValueSizeAndType
 
 function Bitstream.Read(Data: buffer, References: References): { n: number, [number]: any }
@@ -158,10 +138,16 @@ function Bitstream.Read(Data: buffer, References: References): { n: number, [num
 	local Streamed: { n: number, [number]: any } = { n = 0 }
 	local Count: number = 0
 
+	local _buffer: buffer = Buffer._buffer
+	local Pointer: number = Buffer.Pointer
+
+	local ReferenceData: { any } = References.Data
+
 	while Count < ElementCount do
 		Count += 1
 
-		local ValueType: number = ReadUInt8(Buffer)
+		local ValueType: number = buffer.readu8(_buffer, Pointer)
+		Pointer += 1
 	
 		if ValueType == 0 then
 			continue
@@ -171,12 +157,15 @@ function Bitstream.Read(Data: buffer, References: References): { n: number, [num
 
 		if ValueType == 255 then
 			--// REFERENCE
-			local Position: number = ReadUInt16(Buffer)
-			Value = References.Data[Position]
+			local Position: number = buffer.readu16(_buffer, Pointer)
+			Value = ReferenceData[Position]
+			Pointer += 2
 		else
 			--// OTHER
 			local Type: StreamType = TypesFromValue[ValueType]
+			Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
 			Value = Type.Reader(Buffer, References)
+			Pointer = Buffer.Pointer --// Update pointer after
 		end
 
 		Streamed[Count] = Value
@@ -216,15 +205,19 @@ function Bitstream.Create(...: any): (buffer, References)
 		Data = {},
 	}
 
+	local _buffer: buffer = Buffer._buffer
+	local Pointer: number = Buffer.Pointer + #HEADER + 2
+
 	--// Write header
-	WriteString(Buffer, HEADER)
-	WriteUInt16(Buffer, DataCount)
+	buffer.writestring(_buffer, 0, HEADER)
+	buffer.writeu16(_buffer, #HEADER, DataCount)
 	
 	for i: number = 1, DataCount do
 		local Value: any = Data[i]
 
 		if Value == nil then
-			WriteUInt8(Buffer, 0)
+			buffer.writeu8(_buffer, Pointer, 0)
+			Pointer += 1
 			continue
 		end
 
@@ -235,17 +228,23 @@ function Bitstream.Create(...: any): (buffer, References)
 			local NewCount: number = References.Count + 1
 			References.Count = NewCount
 
-			WriteUInt8(Buffer, 255)
-			WriteUInt16(Buffer, NewCount)
-				
+			buffer.writeu8(_buffer, Pointer, 255)
+			buffer.writeu16(_buffer, Pointer + 1, NewCount)
+
+			Pointer += 3
+						
 			References.Data[NewCount] = Value
 		else
 			--// OTHER
 			local RealType: StreamType = Type :: StreamType
 			local ExtraTypes: { [any]: StreamTypeMap }? = TypeInfo.ExtraTypes
 
-			WriteUInt8(Buffer, RealType.Enum.Value)
+			buffer.writeu8(_buffer, Pointer, RealType.Enum.Value)
+			Pointer += 1
+
+			Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
 			RealType.Writer(Buffer, References, Value, ExtraTypes)
+			Pointer = Buffer.Pointer --// Update pointer after
 		end
 	end
 

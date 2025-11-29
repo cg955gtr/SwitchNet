@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: table.luau
 	Date written: 15th November 2025
-	Last edited: 15th November 2025
+	Last edited: 29th November 2025
 ]==]
 
 --!strict
@@ -22,12 +22,6 @@ local ByteBuffer = require("../ByteBuffer")
 
 local GetValueSizeAndType
 local TypesFromValue
-
-local ReadUInt8 = ByteBuffer.ReadUInt8
-local ReadUInt16 = ByteBuffer.ReadUInt16
-
-local WriteUInt8 = ByteBuffer.WriteUInt8
-local WriteUInt16 = ByteBuffer.WriteUInt16
 
 return {
 	Init = function(...)
@@ -105,16 +99,22 @@ return {
 	end,
 
 	Reader = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }): { [any]: any }
+		local _buffer: buffer = Buffer._buffer
+		local Pointer: number = Buffer.Pointer
+
 		local Table: { [any]: any } = {}
 		local ReferenceData: { any } = References.Data
 
-		local TableType: number = ReadUInt8(Buffer)
-		local TableSize: number = ReadUInt16(Buffer)
+		local TableType: number = buffer.readu8(_buffer, Pointer)
+		local TableSize: number = buffer.readu16(_buffer, Pointer + 1)
+
+		Pointer += 3
 
 		if TableType == 0 then
 			for _ = 1, TableSize do
 				--// Index
-				local IndexType: number = ReadUInt8(Buffer)
+				local IndexType: number = buffer.readu8(_buffer, Pointer)
+				Pointer += 1
 	
 				if IndexType == 0 then
 					continue
@@ -124,16 +124,20 @@ return {
 
 				if IndexType == 255 then
 					--// REFERENCE
-					local Position: number = ReadUInt16(Buffer)
+					local Position: number = buffer.readu16(_buffer, Pointer)
 					Index = ReferenceData[Position]
+					Pointer += 2
 				else
 					--// OTHER
 					local Type = TypesFromValue[IndexType]
+					Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
 					Index = Type.Reader(Buffer, References)
+					Pointer = Buffer.Pointer --// Update pointer after
 				end
 
 				--// Value
-				local ValueType: number = ReadUInt8(Buffer)
+				local ValueType: number = buffer.readu8(_buffer, Pointer)
+				Pointer += 1
 	
 				if ValueType == 0 then
 					continue
@@ -143,19 +147,23 @@ return {
 
 				if ValueType == 255 then
 					--// REFERENCE
-					local Position: number = ReadUInt16(Buffer)
+					local Position: number = buffer.readu16(_buffer, Pointer)
 					Value = ReferenceData[Position]
+					Pointer += 2
 				else
 					--// OTHER
 					local Type = TypesFromValue[ValueType]
+					Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
 					Value = Type.Reader(Buffer, References)
+					Pointer = Buffer.Pointer --// Update pointer after
 				end
 
 				Table[Index] = Value
 			end
 		else
 			for i: number = 1, TableSize do
-				local ValueType: number = ReadUInt8(Buffer)
+				local ValueType: number = buffer.readu8(_buffer, Pointer)
+				Pointer += 1
 	
 				if ValueType == 0 then
 					continue
@@ -165,23 +173,30 @@ return {
 
 				if ValueType == 255 then
 					--// REFERENCE
-					local Position: number = ReadUInt16(Buffer)
+					local Position: number = buffer.readu16(_buffer, Pointer)
 					Value = ReferenceData[Position]
+					Pointer += 2
 				else
 					--// OTHER
 					local Type = TypesFromValue[ValueType]
+					Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
 					Value = Type.Reader(Buffer, References)
+					Pointer = Buffer.Pointer --// Update pointer after
 				end
 
 				Table[i] = Value
-				--Table[i] = ReadValue(Buffer, References)
 			end
 		end
+
+		Buffer.Pointer = Pointer
 
 		return Table
 	end,
 
 	Writer = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }, Value: { [any]: any }, Types: { StreamTypeMap })
+		local _buffer: buffer = Buffer._buffer
+		local Pointer: number = Buffer.Pointer
+		
 		local TableType: number = 0
 
 		if Value[1] then
@@ -191,7 +206,7 @@ return {
 		end
 
 		--// Write type flag
-		WriteUInt8(Buffer, TableType)
+		buffer.writeu8(_buffer, Pointer, TableType)
 
 		--// Get table size
 		local TableSize: number = 0
@@ -202,7 +217,10 @@ return {
 			TableSize = Value.n or #Value
 		end
 
-		WriteUInt16(Buffer, TableSize)
+		buffer.writeu16(_buffer, Pointer + 1, TableSize)
+
+		Pointer += 3
+		Buffer.Pointer = Pointer
 
 		if TableSize == 0 then
 			return
@@ -218,13 +236,19 @@ return {
 					local NewCount: number = References.Count + 1
 					References.Count = NewCount
 
-					WriteUInt8(Buffer, 255)
-					WriteUInt16(Buffer, NewCount)
+					buffer.writeu8(_buffer, Pointer, 255)
+					buffer.writeu16(_buffer, Pointer + 1, NewCount)
+
+					Pointer += 3
 						
 					References.Data[NewCount] = i
 				else
-					WriteUInt8(Buffer, IndexType.Enum.Value)
+					buffer.writeu8(_buffer, Pointer, IndexType.Enum.Value)
+					Pointer += 1
+
+					Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
 					IndexType.Writer(Buffer, References, i, IndexTypeInfo.ExtraTypes)
+					Pointer = Buffer.Pointer --// Update pointer after
 				end
 
 				--// Value
@@ -235,13 +259,19 @@ return {
 					local NewCount: number = References.Count + 1
 					References.Count = NewCount
 
-					WriteUInt8(Buffer, 255)
-					WriteUInt16(Buffer, NewCount)
+					buffer.writeu8(_buffer, Pointer, 255)
+					buffer.writeu16(_buffer, Pointer + 1, NewCount)
+
+					Pointer += 3
 						
 					References.Data[NewCount] = v
 				else
-					WriteUInt8(Buffer, ValueType.Enum.Value)
+					buffer.writeu8(_buffer, Pointer, ValueType.Enum.Value)
+					Pointer += 1
+
+					Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
 					ValueType.Writer(Buffer, References, v, ValueTypeInfo.ExtraTypes)
+					Pointer = Buffer.Pointer --// Update pointer after
 				end
 			end
 		else
@@ -249,7 +279,8 @@ return {
 				local v: any = Value[i]
 
 				if v == nil then
-					WriteUInt8(Buffer, 0)
+					buffer.writeu8(_buffer, Pointer, 0)
+					Pointer += 1
 					continue
 				end
 
@@ -257,18 +288,22 @@ return {
 				local Type: any = TypeInfo.Type
 
 				if Type == "REFERENCE" then
-					--// REFERENCE
 					local NewCount: number = References.Count + 1
 					References.Count = NewCount
 
-					WriteUInt8(Buffer, 255)
-					WriteUInt16(Buffer, NewCount)
+					buffer.writeu8(_buffer, Pointer, 255)
+					buffer.writeu16(_buffer, Pointer + 1, NewCount)
+
+					Pointer += 3
 						
 					References.Data[NewCount] = v
 				else
-					--// OTHER
-					WriteUInt8(Buffer, Type.Enum.Value)
+					buffer.writeu8(_buffer, Pointer, Type.Enum.Value)
+					Pointer += 1
+
+					Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
 					Type.Writer(Buffer, References, v, TypeInfo.ExtraTypes)
+					Pointer = Buffer.Pointer --// Update pointer after
 				end
 			end
 		end
