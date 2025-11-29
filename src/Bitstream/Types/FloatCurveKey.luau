@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: FloatCurveKey.luau
 	Date written: 15th November 2025
-	Last edited: 15th November 2025
+	Last edited: 29th November 2025
 ]==]
 
 --!strict
@@ -11,21 +11,20 @@
 
 local ByteBuffer = require("../ByteBuffer")
 
-local ReadFloat32 = ByteBuffer.ReadFloat32
-local ReadUInt8 = ByteBuffer.ReadUInt8
-
-local WriteFloat32 = ByteBuffer.WriteFloat32
-local WriteUInt8 = ByteBuffer.WriteUInt8
-
 return {
 	Size = 17,
 
 	Reader = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }): FloatCurveKey
-		local Time: number = ReadFloat32(Buffer)
-		local Value: number = ReadFloat32(Buffer)
-		local Mode: number = ReadUInt8(Buffer)
-		local LeftTangent: number = ReadFloat32(Buffer)
-		local RightTangent: number = ReadFloat32(Buffer)
+		local _buffer: buffer = Buffer._buffer
+		local Pointer: number = Buffer.Pointer
+
+		Buffer.Pointer += 17
+
+		local Time: number = buffer.readf32(_buffer, Pointer)
+		local Value: number = buffer.readf32(_buffer, Pointer + 4)
+		local Mode: number = buffer.readu8(_buffer, Pointer + 8)
+		local LeftTangent: number = buffer.readf32(_buffer, Pointer + 9)
+		local RightTangent: number = buffer.readf32(_buffer, Pointer + 13)
 
 		local Key: FloatCurveKey =  FloatCurveKey.new(Time, Value, Enum.KeyInterpolationMode:FromValue(Mode) :: Enum.KeyInterpolationMode)
 
@@ -36,10 +35,15 @@ return {
 	end,
 
 	Writer = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }, Value: FloatCurveKey)
-		WriteFloat32(Buffer, Value.Time)
-		WriteFloat32(Buffer, Value.Value)
-		WriteUInt8(Buffer, Value.Interpolation.Value)
-		WriteFloat32(Buffer, Value.LeftTangent or 0)
-		WriteFloat32(Buffer, Value.RightTangent or 0)
+		local _buffer: buffer = Buffer._buffer
+		local Pointer: number = Buffer.Pointer
+
+		Buffer.Pointer += 17
+
+		buffer.writef32(_buffer, Pointer, Value.Time)
+		buffer.writef32(_buffer, Pointer + 4, Value.Value)
+		buffer.writeu8(_buffer, Pointer + 8, Value.Interpolation.Value)
+		buffer.writef32(_buffer, Pointer + 9, Value.LeftTangent or 0)
+		buffer.writef32(_buffer, Pointer + 13, Value.RightTangent or 0)
 	end,
 }
