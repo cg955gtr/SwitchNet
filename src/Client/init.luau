@@ -94,14 +94,17 @@ function Client.new(Name: string): Client
 		end
 	end)
 
+	local _sendStack: { SendPacket } = self._sendStack
+	local _sendStackUnr: { SendPacket } = self._sendStackUnr
+
 	self._replicationHandler = RunService.PostSimulation:Connect(function()
 		debug.profilebegin("SwitchNet.Client._replicationHandler")
 
-		if #self._sendStack > 0 then
+		if #_sendStack > 0 then
 			HandleSendStack(self, true)
 		end
 
-		if #self._sendStackUnr > 0 then
+		if #_sendStackUnr > 0 then
 			HandleSendStack(self, false)
 		end
 
@@ -133,9 +136,13 @@ function Client.new(Name: string): Client
 			return nil
 		end
 
-		local Buffer: buffer, References: Bitstream.References = Create(table.unpack(Results, 1, Results.n))
+		local Success: boolean, Buffer: buffer, References: Bitstream.References = pcall(Create, table.unpack(Results, 1, Results.n))
 
 		debug.profileend()
+
+		if not Success then
+			return nil
+		end
 
 		return {
 			Data = Buffer,

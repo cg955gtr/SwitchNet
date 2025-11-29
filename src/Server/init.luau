@@ -114,25 +114,30 @@ function Server.new(Name: string): Server
 			HandleIncomingRequest(self, false, Sender, Packet.Data, Packet.References)
 		end
 	end)
+	
+	local _globalSendStack: { SendPacket } = self._globalSendStack
+	local _globalSendStackUnr: { SendPacket } = self._globalSendStackUnr
+	local _playerSendStack: { PlayerSendPacket } = self._playerSendStack
+	local _playerSendStackUnr: { PlayerSendPacket } = self._playerSendStackUnr
 
 	self._replicationHandler = RunService.PostSimulation:Connect(function()
 		debug.profilebegin("SwitchNet.Server._replicationHandler")
 
 		--// Global stacks (FireAllClients)
-		if #self._globalSendStack > 0 then
+		if #_globalSendStack > 0 then
 			HandleSendStack(self, true)
 		end
 
-		if #self._globalSendStackUnr > 0 then
+		if #_globalSendStackUnr > 0 then
 			HandleSendStack(self, false)
 		end
 
 		--// Per-player stacks
-		if #self._playerSendStack > 0 then
+		if #_playerSendStack > 0 then
 			HandlePlayerSendStack(self, true)
 		end
 
-		if #self._playerSendStackUnr > 0 then
+		if #_playerSendStackUnr > 0 then
 			HandlePlayerSendStack(self, false)
 		end
 
