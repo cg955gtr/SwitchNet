@@ -20,7 +20,7 @@ return {
 
 		Buffer.Pointer += 3
 
-		return Color3.fromRGB(
+		return Color3.new(
 			buffer.readu8(_buffer, Pointer),
 			buffer.readu8(_buffer, Pointer + 1),
 			buffer.readu8(_buffer, Pointer + 2)
