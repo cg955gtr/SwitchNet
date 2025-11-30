@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: Vector2.luau
 	Date written: 15th November 2025
-	Last edited: 15th November 2025
+	Last edited: 29th November 2025
 ]==]
 
 --!strict
@@ -11,18 +11,28 @@
 
 local ByteBuffer = require("../ByteBuffer")
 
-local ReadVector2 = ByteBuffer.ReadVector2
-
-local WriteVector2 = ByteBuffer.WriteVector2
-
 return {
 	Size = 8,
 
 	Reader = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }): Vector2
-		return ReadVector2(Buffer)
+		local _buffer: buffer = Buffer._buffer
+		local Pointer: number = Buffer.Pointer
+
+		Buffer.Pointer += 8
+
+		return Vector2.new(
+			buffer.readf32(_buffer, Pointer),
+			buffer.readf32(_buffer, Pointer + 4)
+		)
 	end,
 
 	Writer = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }, Value: Vector2)
-		WriteVector2(Buffer, Value)
+		local _buffer: buffer = Buffer._buffer
+		local Pointer: number = Buffer.Pointer
+
+		Buffer.Pointer += 8
+
+		buffer.writef32(_buffer, Pointer, Value.X)
+		buffer.writef32(_buffer, Pointer + 4, Value.Y)
 	end,
 }
