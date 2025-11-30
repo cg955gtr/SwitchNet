@@ -57,6 +57,8 @@ Bitstream.Enums = {} :: { [string]: StreamEnum }
 local function GetAndCheckRemoteData(Data: buffer, References: References): (ByteBuffer.ByteBuffer, number)
 	debug.profilebegin("Bitstream._getAndCheckRemoteData")
 
+	--// TODO: Add some extra checks probably? It might be good enough for now
+
 	--// Check remote arg types
 	assert(type(Data) == "buffer" and type(References) == "table", "invalid remote args!")
 

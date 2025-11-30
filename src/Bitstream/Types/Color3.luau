@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: Color3.luau
 	Date written: 15th November 2025
-	Last edited: 29th November 2025
+	Last edited: 30th November 2025
 ]==]
 
 --!strict
