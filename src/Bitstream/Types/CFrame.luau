@@ -39,7 +39,10 @@ return {
 		local _buffer: buffer = Buffer._buffer
 		local Pointer: number = Buffer.Pointer
 
-		local rX: number, rY: number, rZ: number = Value:ToEulerAnglesXYZ()
+		local Axis: Vector3, Angle: number = Value:ToAxisAngle()
+		Axis *= Angle
+		
+		local rX: number, rY: number, rZ: number = Axis.X, Axis.Y, Axis.Z
 
 		buffer.writef32(_buffer, Pointer, Value.X)
 		buffer.writef32(_buffer, Pointer + 4, Value.Y)
