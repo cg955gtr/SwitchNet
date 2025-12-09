@@ -34,7 +34,7 @@ SwitchNet.Server.Connect(Remote, "Main", function(Sender: Player, ...: any)
 	--// ^ Basically as if you did .OnServerEvent
 	print(`The server sent us data! Data:`, ...)
 
-	SwitchNet.Server.FireServer(Remote, Sender, "Hello from the server!")
+	SwitchNet.Server.FireClient(Remote, Sender, "Hello from the server!")
 end)
 
 SwitchNet.Server.SetOnInvoke(Remote, function(Sender: Player, Action: string)
