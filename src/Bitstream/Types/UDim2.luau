@@ -18,7 +18,7 @@ return {
 		local _buffer: buffer = Buffer._buffer
 		local Pointer: number = Buffer.Pointer
 
-		Buffer.Pointer += 8
+		Buffer.Pointer += 16
 
 		return UDim2.new(
 			buffer.readf32(_buffer, Pointer),

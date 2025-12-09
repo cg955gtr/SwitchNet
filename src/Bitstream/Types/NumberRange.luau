@@ -18,7 +18,7 @@ return {
 		local _buffer: buffer = Buffer._buffer
 		local Pointer: number = Buffer.Pointer
 
-		Buffer.Pointer += 4
+		Buffer.Pointer += 8
 
 		return NumberRange.new(
 			buffer.readf32(_buffer, Pointer),
@@ -30,7 +30,7 @@ return {
 		local _buffer: buffer = Buffer._buffer
 		local Pointer: number = Buffer.Pointer
 
-		Buffer.Pointer += 4
+		Buffer.Pointer += 8
 		
 		buffer.writef32(_buffer, Pointer, Value.Min)
 		buffer.writef32(_buffer, Pointer + 4, Value.Max)
