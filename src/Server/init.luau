@@ -68,8 +68,6 @@ end
 
 local Server = {}
 
---// Main methods
-
 function Server.new(Name: string): Server
 	assert(ACTIVE_REMOTES[Name] == nil, `remote bridge '{Name}' already exists!`)
 	ACTIVE_REMOTES[Name] = true

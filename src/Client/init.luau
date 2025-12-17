@@ -66,8 +66,6 @@ end
 
 local Client = {}
 
---// Main methods
-
 function Client.new(Name: string): Client
 	assert(ACTIVE_REMOTES[Name] == nil, `remote bridge '{Name}' already exists!`)
 	ACTIVE_REMOTES[Name] = true
@@ -86,7 +84,6 @@ function Client.new(Name: string): Client
 	self._remoteFunction = self._remoteContainer:WaitForChild("Function") :: RemoteFunction
 
 	local HandleIncomingRequest = Client._handleIncomingRequest
-	local HandleSendStack = Client._handleSendStack
 
 	self._onClientEvent = self._remoteEvent.OnClientEvent:Connect(function(IncomingData: { NetworkPacket })
 		if type(IncomingData) ~= "table" then
@@ -116,6 +113,9 @@ function Client.new(Name: string): Client
 		end
 	end)
 
+	local Remote: RemoteEvent = self._remoteEvent
+	local UnreliableRemote: UnreliableRemoteEvent = self._unrRemoteEvent
+
 	local _sendStack: { SendPacket } = self._sendStack
 	local _sendStackUnr: { SendPacket } = self._sendStackUnr
 
@@ -123,11 +123,37 @@ function Client.new(Name: string): Client
 		debug.profilebegin("SwitchNet.Client._replicationHandler")
 
 		if #_sendStack > 0 then
-			HandleSendStack(self, true)
+			local NetworkPackets: { NetworkPacket } = {}
+
+			for _, Packet: SendPacket in _sendStack do
+				local Buffer: buffer, References: Bitstream.NBasedArray = Create(Packet.Data, Packet.Size)
+
+				table.insert(NetworkPackets, {
+					Data = Buffer,
+					References = References :: { any },
+				})
+			end
+
+			table.clear(_sendStack)
+	
+			Remote:FireServer(NetworkPackets)
 		end
 
 		if #_sendStackUnr > 0 then
-			HandleSendStack(self, false)
+			local NetworkPackets: { NetworkPacket } = {}
+
+			for _, Packet: SendPacket in _sendStackUnr do
+				local Buffer: buffer, References: Bitstream.NBasedArray = Create(Packet.Data, Packet.Size)
+
+				table.insert(NetworkPackets, {
+					Data = Buffer,
+					References = References :: { any },
+				})
+			end
+
+			table.clear(_sendStackUnr)
+	
+			UnreliableRemote:FireServer(NetworkPackets)
 		end
 
 		debug.profileend()
@@ -289,27 +315,6 @@ function Client._handleIncomingRequest(self: Client, Reliable: boolean, Data: bu
 	end
 
 	debug.profileend()
-end
-
-function Client._handleSendStack(self: Client, Reliable: boolean)
-	local Remote = if Reliable then self._remoteEvent else self._unrRemoteEvent
-	local Stack: { SendPacket } = if Reliable then self._sendStack else self._sendStackUnr
-
-	local NetworkPackets: { NetworkPacket } = {}
-
-	for _, Packet: SendPacket in Stack do
-		local Buffer: buffer, References: Bitstream.NBasedArray = Create(Packet.Data, Packet.Size)
-
-		table.insert(NetworkPackets, {
-			Data = Buffer,
-			References = References :: { any },
-		})
-	end
-
-	table.clear(Stack);
-	
-	(Remote :: RemoteEvent):FireServer(NetworkPackets)
-	--// ^ I hate the typechecker
 end
 
 return Client
