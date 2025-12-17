@@ -9,32 +9,22 @@
 --!native
 --!optimize 2
 
-local ByteBuffer = require("../ByteBuffer")
-
 return {
 	Size = 3,
 
-	Reader = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }): Color3
-		local _buffer: buffer = Buffer._buffer
-		local Pointer: number = Buffer.Pointer
-
-		Buffer.Pointer += 3
-
+	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (Color3, number)
 		return Color3.fromRGB(
-			buffer.readu8(_buffer, Pointer),
-			buffer.readu8(_buffer, Pointer + 1),
-			buffer.readu8(_buffer, Pointer + 2)
-		)
+			buffer.readu8(Buffer, Pointer),
+			buffer.readu8(Buffer, Pointer + 1),
+			buffer.readu8(Buffer, Pointer + 2)
+		), 3
 	end,
 
-	Writer = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }, Value: Color3)
-		local _buffer: buffer = Buffer._buffer
-		local Pointer: number = Buffer.Pointer
+	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: Color3)
+		buffer.writeu8(Buffer, Pointer, math.round(Value.R * 255))
+		buffer.writeu8(Buffer, Pointer + 1, math.round(Value.G * 255))
+		buffer.writeu8(Buffer, Pointer + 2, math.round(Value.B * 255))
 
-		buffer.writeu8(_buffer, Pointer, math.round(Value.R * 255))
-		buffer.writeu8(_buffer, Pointer + 1, math.round(Value.G * 255))
-		buffer.writeu8(_buffer, Pointer + 2, math.round(Value.B * 255))
-
-		Buffer.Pointer += 3
+		return 3
 	end,
 }

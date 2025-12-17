@@ -2,118 +2,81 @@
 	Author: 8ch99
 	File: table.luau
 	Date written: 15th November 2025
-	Last edited: 29th November 2025
+	Last edited: 15th December 2025
 ]==]
 
 --!strict
 --!native
 --!optimize 2
 
-export type StreamTypeMap = {
-	Type: any | string,
-	ExtraTypes: { [any]: any }?,
-}
-
 --// ^ not proper, but it works
 
 local Bitstream
 
-local ByteBuffer = require("../ByteBuffer")
-
-local GetValueSizeAndType
+local GetSizeOfValues
+local Types
 local TypesFromValue
 
 return {
 	Init = function(...)
 		Bitstream = ...
 		
-		GetValueSizeAndType = Bitstream._getValueSizeAndType
+		GetSizeOfValues = Bitstream._getSizeOfValues
+		Types = Bitstream.Types
 		TypesFromValue = Bitstream.TypesFromValue
 	end,
 
-	GetSize = function(Value: { [any]: any }): (number, { [any]: StreamTypeMap })
+	GetSize = function(Value: { [any]: any }): number
 		local Size: number = 3
 		local Type: number = 0
-
-		local Types: { [any]: StreamTypeMap } = {}
 
 		if Value[1] then
 			Type = 1
 		end
 
 		--// Get table size
-		local TableSize: number = 0
-
 		if Type == 0 then
-			for _ in Value do TableSize += 1 end
-		else
-			TableSize = Value.n or #Value
-		end
-
-		if TableSize == 0 then
-			return Size, Types
-		end
-
-		local PreviousValue: any, PreviousValueSize: number, PreviousValueType: StreamTypeMap
-
-		if Type == 1 then
-			for i: number = 1, TableSize do
-				local v: any = Value[i]
-
-				if v ~= PreviousValue then
-					PreviousValue = v
-					PreviousValueSize, PreviousValueType = GetValueSizeAndType(v)
-				end
-
-				Size += PreviousValueSize
-
-				Types[i] = PreviousValueType
-			end
-		else
-			local PreviousIndex: any, PreviousIndexSize: number, PreviousIndexType: StreamTypeMap
+			local Array: { any } = {}
 
 			for i: any, v: any in Value do
-				if i ~= PreviousIndex then
-					PreviousIndex = i
-					PreviousIndexSize, PreviousIndexType = GetValueSizeAndType(i)
-				end
-
-				if v ~= PreviousValue then
-					PreviousValue = v
-					PreviousValueSize, PreviousValueType = GetValueSizeAndType(v)
-				end
-
-				Size += PreviousIndexSize + PreviousValueSize
-
-				if not Types[i] then
-					Types[i] = PreviousIndexType
-				end
-
-				if not Types[v] then
-					Types[v] = PreviousValueType
-				end
+				table.insert(Array, i)
+				table.insert(Array, v)
 			end
+			
+			local TableSize: number = #Array
+			Size += GetSizeOfValues(Array, TableSize)
+
+			table.clear(Array)
+			Array = nil :: never
+		else
+			local TableSize: number = Value.n or #Value
+			
+			if TableSize == 0 then
+				return Size
+			end
+
+			Size += GetSizeOfValues(Value, TableSize)
 		end
 
-		return Size, Types
+		return Size
 	end,
 
-	Reader = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }): { [any]: any }
-		local _buffer: buffer = Buffer._buffer
-		local Pointer: number = Buffer.Pointer
+	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): ({ [any]: any }, number)
+		local OriginPointer: number = Pointer
 
-		local Table: { [any]: any } = {}
-		local ReferenceData: { any } = References.Data
+		local Table: { [any]: any }
 
-		local TableType: number = buffer.readu8(_buffer, Pointer)
-		local TableSize: number = buffer.readu16(_buffer, Pointer + 1)
+		local TableType: number = buffer.readu8(Buffer, Pointer)
+		local TableSize: number = buffer.readu16(Buffer, Pointer + 1)
 
 		Pointer += 3
 
 		if TableType == 0 then
+			Table = {}
+			
 			for _ = 1, TableSize do
 				--// Index
-				local IndexType: number = buffer.readu8(_buffer, Pointer)
+				local IndexType: number = buffer.readu8(Buffer, Pointer)
 				Pointer += 1
 	
 				if IndexType == 0 then
@@ -124,19 +87,19 @@ return {
 
 				if IndexType == 255 then
 					--// REFERENCE
-					local Position: number = buffer.readu16(_buffer, Pointer)
-					Index = ReferenceData[Position]
+					local Position: number = buffer.readu16(Buffer, Pointer)
+					Index = References[Position]
 					Pointer += 2
 				else
 					--// OTHER
 					local Type = TypesFromValue[IndexType]
-					Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
-					Index = Type.Reader(Buffer, References)
-					Pointer = Buffer.Pointer --// Update pointer after
+					local IndexResult: any, PtrOffset: number = Type.Reader(Buffer, References, Pointer)
+					Index = IndexResult
+					Pointer += PtrOffset
 				end
 
 				--// Value
-				local ValueType: number = buffer.readu8(_buffer, Pointer)
+				local ValueType: number = buffer.readu8(Buffer, Pointer)
 				Pointer += 1
 	
 				if ValueType == 0 then
@@ -147,22 +110,24 @@ return {
 
 				if ValueType == 255 then
 					--// REFERENCE
-					local Position: number = buffer.readu16(_buffer, Pointer)
-					Value = ReferenceData[Position]
+					local Position: number = buffer.readu16(Buffer, Pointer)
+					Value = References[Position]
 					Pointer += 2
 				else
 					--// OTHER
 					local Type = TypesFromValue[ValueType]
-					Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
-					Value = Type.Reader(Buffer, References)
-					Pointer = Buffer.Pointer --// Update pointer after
+					local ValueResult: any, PtrOffset: number = Type.Reader(Buffer, References, Pointer)
+					Value = ValueResult
+					Pointer += PtrOffset
 				end
 
 				Table[Index] = Value
 			end
 		else
+			Table = table.create(TableSize)
+			
 			for i: number = 1, TableSize do
-				local ValueType: number = buffer.readu8(_buffer, Pointer)
+				local ValueType: number = buffer.readu8(Buffer, Pointer)
 				Pointer += 1
 	
 				if ValueType == 0 then
@@ -173,30 +138,27 @@ return {
 
 				if ValueType == 255 then
 					--// REFERENCE
-					local Position: number = buffer.readu16(_buffer, Pointer)
-					Value = ReferenceData[Position]
+					local Position: number = buffer.readu16(Buffer, Pointer)
+					Value = References[Position]
 					Pointer += 2
 				else
 					--// OTHER
 					local Type = TypesFromValue[ValueType]
-					Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
-					Value = Type.Reader(Buffer, References)
-					Pointer = Buffer.Pointer --// Update pointer after
+					local ValueResult: any, PtrOffset: number = Type.Reader(Buffer, References, Pointer)
+					Value = ValueResult
+					Pointer += PtrOffset
 				end
 
 				Table[i] = Value
 			end
 		end
 
-		Buffer.Pointer = Pointer
-
-		return Table
+		return Table, Pointer - OriginPointer
 	end,
 
-	Writer = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }, Value: { [any]: any }, Types: { StreamTypeMap })
-		local _buffer: buffer = Buffer._buffer
-		local Pointer: number = Buffer.Pointer
-		
+	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: { [any]: any }): number
+		local OriginPointer: number = Pointer
+
 		local TableType: number = 0
 
 		if Value[1] then
@@ -204,9 +166,6 @@ return {
 			--// HttpService:JSONEncode() behaves the same way for array checks, so this should be fine
 			TableType = 1
 		end
-
-		--// Write type flag
-		buffer.writeu8(_buffer, Pointer, TableType)
 
 		--// Get table size
 		local TableSize: number = 0
@@ -216,62 +175,59 @@ return {
 		else
 			TableSize = Value.n or #Value
 		end
-
-		buffer.writeu16(_buffer, Pointer + 1, TableSize)
+		
+		--// Write type flag + size
+		buffer.writeu8(Buffer, Pointer, TableType)
+		buffer.writeu16(Buffer, Pointer + 1, TableSize)
+		
+		if TableSize == 0 then
+			return 3
+		end
 
 		Pointer += 3
-		Buffer.Pointer = Pointer
-
-		if TableSize == 0 then
-			return
-		end
 
 		if TableType == 0 then
 			for i: any, v: any in Value do
 				--// Index
-				local IndexTypeInfo: StreamTypeMap = Types[i]
-				local IndexType: any = IndexTypeInfo.Type
+				local IndexType: any = Types[type(i)] or Types[typeof(i)]
 
-				if IndexType == "REFERENCE" then
-					local NewCount: number = References.Count + 1
-					References.Count = NewCount
-
-					buffer.writeu8(_buffer, Pointer, 255)
-					buffer.writeu16(_buffer, Pointer + 1, NewCount)
-
-					Pointer += 3
-						
-					References.Data[NewCount] = i
-				else
-					buffer.writeu8(_buffer, Pointer, IndexType.Enum.Value)
+				if IndexType ~= nil then
+					buffer.writeu8(Buffer, Pointer, IndexType.Value)
 					Pointer += 1
 
-					Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
-					IndexType.Writer(Buffer, References, i, IndexTypeInfo.ExtraTypes)
-					Pointer = Buffer.Pointer --// Update pointer after
+					local PtrOffset: number = IndexType.Writer(Buffer, References, Pointer, i)
+					Pointer += PtrOffset
+				else
+					local NewCount: number = References.n + 1
+					References.n = NewCount
+
+					buffer.writeu8(Buffer, Pointer, 255)
+					buffer.writeu16(Buffer, Pointer + 1, NewCount)
+
+					Pointer += 3
+
+					References[NewCount] = i
 				end
 
 				--// Value
-				local ValueTypeInfo: StreamTypeMap = Types[v]
-				local ValueType: any = ValueTypeInfo.Type
+				local ValueType: any = Types[type(v)] or Types[typeof(v)]
 
-				if ValueType == "REFERENCE" then
-					local NewCount: number = References.Count + 1
-					References.Count = NewCount
-
-					buffer.writeu8(_buffer, Pointer, 255)
-					buffer.writeu16(_buffer, Pointer + 1, NewCount)
-
-					Pointer += 3
-						
-					References.Data[NewCount] = v
-				else
-					buffer.writeu8(_buffer, Pointer, ValueType.Enum.Value)
+				if ValueType ~= nil then
+					buffer.writeu8(Buffer, Pointer, ValueType.Value)
 					Pointer += 1
 
-					Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
-					ValueType.Writer(Buffer, References, v, ValueTypeInfo.ExtraTypes)
-					Pointer = Buffer.Pointer --// Update pointer after
+					local PtrOffset: number = ValueType.Writer(Buffer, References, Pointer, v)
+					Pointer += PtrOffset
+				else
+					local NewCount: number = References.n + 1
+					References.n = NewCount
+
+					buffer.writeu8(Buffer, Pointer, 255)
+					buffer.writeu16(Buffer, Pointer + 1, NewCount)
+
+					Pointer += 3
+
+					References[NewCount] = v
 				end
 			end
 		else
@@ -279,33 +235,33 @@ return {
 				local v: any = Value[i]
 
 				if v == nil then
-					buffer.writeu8(_buffer, Pointer, 0)
+					buffer.writeu8(Buffer, Pointer, 0)
 					Pointer += 1
 					continue
 				end
 
-				local TypeInfo: StreamTypeMap = Types[i]
-				local Type: any = TypeInfo.Type
+				local Type: any = Types[type(v)] or Types[typeof(v)]
 
-				if Type == "REFERENCE" then
-					local NewCount: number = References.Count + 1
-					References.Count = NewCount
-
-					buffer.writeu8(_buffer, Pointer, 255)
-					buffer.writeu16(_buffer, Pointer + 1, NewCount)
-
-					Pointer += 3
-						
-					References.Data[NewCount] = v
-				else
-					buffer.writeu8(_buffer, Pointer, Type.Enum.Value)
+				if Type ~= nil then
+					buffer.writeu8(Buffer, Pointer, Type.Value)
 					Pointer += 1
 
-					Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
-					Type.Writer(Buffer, References, v, TypeInfo.ExtraTypes)
-					Pointer = Buffer.Pointer --// Update pointer after
+					local PtrOffset: number = Type.Writer(Buffer, References, Pointer, v)
+					Pointer += PtrOffset
+				else
+					local NewCount: number = References.n + 1
+					References.n = NewCount
+
+					buffer.writeu8(Buffer, Pointer, 255)
+					buffer.writeu16(Buffer, Pointer + 1, NewCount)
+
+					Pointer += 3
+
+					References[NewCount] = v
 				end
 			end
 		end
+
+		return Pointer - OriginPointer
 	end,
 }

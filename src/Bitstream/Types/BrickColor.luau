@@ -2,29 +2,22 @@
 	Author: 8ch99
 	File: BrickColor.luau
 	Date written: 15th November 2025
-	Last edited: 29th November 2025
+	Last edited: 17th December 2025
 ]==]
 
 --!strict
 --!native
 --!optimize 2
 
-local ByteBuffer = require("../ByteBuffer")
-
 return {
 	Size = 2,
 
-	Reader = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }): BrickColor
-		local Value: number = buffer.readu16(Buffer._buffer, Buffer.Pointer)
-
-		Buffer.Pointer += 2
-
-		return BrickColor.new(Value)
+	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (BrickColor, number)
+		return BrickColor.new(buffer.readu16(Buffer, Pointer)), 2
 	end,
 
-	Writer = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }, Value: BrickColor)
-		buffer.writeu16(Buffer._buffer, Buffer.Pointer, Value.Number)
-
-		Buffer.Pointer += 2
+	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: BrickColor): number
+		buffer.writeu8(Buffer, Pointer, Value.Number)
+		return 2
 	end,
 }

@@ -2,14 +2,12 @@
 	Author: 8ch99
 	File: boolean.luau
 	Date written: 22nd November 2025
-	Last edited: 29th November 2025
+	Last edited: 17th December 2025
 ]==]
 
 --!strict
 --!native
 --!optimize 2
-
-local ByteBuffer = require("../ByteBuffer")
 
 local EnumTypeNameReferences: { [Enum]: string } = {}
 
@@ -22,30 +20,22 @@ return {
 		return 5 + #EnumTypeNameReferences[Value.EnumType]
 	end,
 
-	Reader = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }): EnumItem
-		local _buffer: buffer = Buffer._buffer
-		local Pointer: number = Buffer.Pointer
+	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (EnumItem, number)
+		local Value: number = buffer.readu32(Buffer, Pointer)
+		local ListNameSize: number = buffer.readu8(Buffer, Pointer + 4)
+		local ListName: string = buffer.readstring(Buffer, Pointer + 5, ListNameSize)
 
-		local Value: number = buffer.readu32(_buffer, Pointer)
-		local ListNameSize: number = buffer.readu8(_buffer, Pointer + 4)
-		local ListName: string = buffer.readstring(_buffer, Pointer + 5, ListNameSize)
-
-		Buffer.Pointer += 5 + ListNameSize
-
-		return (Enum[ListName] :: any):FromValue(Value)
+		return (Enum[ListName] :: any):FromValue(Value), 5 + ListNameSize
 	end,
 
-	Writer = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }, Value: EnumItem)
+	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: EnumItem): number
 		local ListName: string = EnumTypeNameReferences[Value.EnumType]
 		local ListNameSize: number = #ListName
 
-		local _buffer: buffer = Buffer._buffer
-		local Pointer: number = Buffer.Pointer
+		buffer.writeu32(Buffer, Pointer, Value.Value)
+		buffer.writeu8(Buffer, Pointer + 4, ListNameSize)
+		buffer.writestring(Buffer, Pointer + 5, ListName, ListNameSize)
 
-		buffer.writeu32(_buffer, Pointer, Value.Value)
-		buffer.writeu8(_buffer, Pointer + 4, ListNameSize)
-		buffer.writestring(_buffer, Pointer + 5, ListName, ListNameSize)
-
-		Buffer.Pointer += 5 + ListNameSize
+		return 5 + ListNameSize
 	end,
 }

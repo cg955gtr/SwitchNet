@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: Bitstream.luau
 	Date written: 15th November 2025
-	Last edited: 23rd November 2025
+	Last edited: 17th December 2025
 ]==]
 
 --!strict
@@ -12,34 +12,18 @@
 --// Dependencies
 
 local HEADER: string = "\16\26"
-local BUFFER_SIZE_LIMIT: number = 1048575 --// 2 ^ 20 - 1
+local BUFFER_SIZE_LIMIT: number = 2 ^ 21
 
-local ByteBuffer = require("@self/ByteBuffer")
-
-local fromBuffer = ByteBuffer.fromBuffer
+export type NBasedArray = { n: number, [number]: any }
 
 export type StreamType = {
-	Size: number?,
-	GetSize: ((Value: any) -> (number, any?))?,
-	
-	Reader: (Buffer: ByteBuffer.ByteBuffer, References: References) -> any,
-	Writer: (Buffer: ByteBuffer.ByteBuffer, References: References, Value: any, Types: { [any]: StreamTypeMap }?) -> (),
-	Enum: StreamEnum,
-}
-
-export type StreamEnum = {
 	Name: string,
 	Value: number,
-}
+	Size: number?,
+	GetSize: ((Value: any) -> number)?,
 
-export type References = {
-	Count: number,
-	Data: { any },
-}
-
-export type StreamTypeMap = {
-	Type: StreamType | string,
-	ExtraTypes: { [any]: StreamTypeMap }?,
+	Reader: (Buffer: buffer, References: NBasedArray, Pointer: number) -> (any, number),
+	Writer: (Buffer: buffer, References: NBasedArray, Pointer: number, Value: any) -> number,
 }
 
 --// @module Bitstream
@@ -52,19 +36,14 @@ local TypesFromValue = {} :: { StreamType }
 Bitstream.Types = Types
 Bitstream.TypesFromValue = TypesFromValue
 
-Bitstream.Enums = {} :: { [string]: StreamEnum }
-
-local function GetAndCheckRemoteData(Data: buffer, References: References): (ByteBuffer.ByteBuffer, number)
-	debug.profilebegin("Bitstream._getAndCheckRemoteData")
-
+local function GetAndCheckRemoteData(Data: buffer, References: NBasedArray): (buffer, number)
 	--// TODO: Add some extra checks probably? It might be good enough for now
 
 	--// Check remote arg types
 	assert(type(Data) == "buffer" and type(References) == "table", "invalid remote args!")
 
-	local Count: number = References.Count
+	local Count: number = References.n
 	assert(type(Count) == "number" and tostring(Count) == tostring(math.floor(Count)), "invalid remote args!")
-	assert(type(References.Data) == "table", "invalid remote args!")
 
 	--// Check buffer size
 	local Size: number = buffer.len(Data)
@@ -75,27 +54,19 @@ local function GetAndCheckRemoteData(Data: buffer, References: References): (Byt
 
 	--// Read element count, and check
 	local ElementCount: number = buffer.readu16(Data, #HEADER)
-
 	assert(ElementCount <= (Size // 2), "invalid data sequence provided (element size is too high relative to buffer size)")
 
-	local Buffer: ByteBuffer.ByteBuffer = fromBuffer(Data)
-	Buffer.Pointer += #HEADER + 2
-
-	debug.profileend()
-
 	--// Return bit buffer + element count
-	return Buffer, ElementCount
+	return Data, ElementCount
 end
 
-local function GetValueSizeAndType(Value: any, NoHeader: boolean?): (number, StreamTypeMap)
-	debug.profilebegin("Bitstream._getValueSizeAndType")
 
-	local Size: number = if NoHeader then 0 else 1
+local function GetValueSizeAndType(Value: any): (number, StreamType?)
+	local Size: number = 1
 	local Type: StreamType?
-	local ExtraTypes: { [any]: StreamTypeMap }?
 
 	if Value ~= nil then
-		Type = Types[typeof(Value)] or Types[type(Value)]
+		Type = Types[type(Value)] or Types[typeof(Value)]
 
 		if Type then
 			--// OTHER
@@ -105,14 +76,9 @@ local function GetValueSizeAndType(Value: any, NoHeader: boolean?): (number, Str
 				Size += _size
 			else
 				local GetSize = Type.GetSize
-				if GetSize then
-					local __size: number, _extraTypes: { [any]: StreamTypeMap }? = GetSize(Value)
-					
-					Size += __size
 
-					if _extraTypes ~= nil then
-						ExtraTypes = _extraTypes
-					end
+				if GetSize then
+					Size += GetSize(Value)
 				end
 			end
 		else
@@ -121,36 +87,86 @@ local function GetValueSizeAndType(Value: any, NoHeader: boolean?): (number, Str
 		end
 	end
 
-	debug.profileend()
+	return Size, Type
+end
 
-	local StreamTypeMap: StreamTypeMap = {
-		Type = if Type then Type else "REFERENCE",
-		ExtraTypes = ExtraTypes,
-	}
+local function GetValueSizeOnly(Value: any): number
+	local Size: number = 1
 
-	return Size, StreamTypeMap
+	if Value ~= nil then
+		local Type: StreamType? = Types[type(Value)] or Types[typeof(Value)]
+
+		if Type then
+			--// OTHER
+			local _size: number? = Type.Size
+
+			if _size then
+				Size += _size
+			else
+				local GetSize = Type.GetSize
+
+				if GetSize then
+					Size += GetSize(Value)
+				end
+			end
+		else
+			--// REFERENCE
+			Size += 2
+		end
+	end
+
+	return Size
+end
+
+local function GetSizeOfValues(Data: NBasedArray, Length: number?): number
+	local Size: number = 0
+
+	for i: number = 1, Length or Data.n or #Data do
+		Size += 1
+		local Value: any? = Data[i]
+
+		if Value ~= nil then
+			local Type: StreamType? = Types[type(Value)] or Types[typeof(Value)]
+
+			if Type then
+				--// OTHER
+				local _size: number? = Type.Size
+
+				if _size then
+					Size += _size
+				else
+					local GetSize = Type.GetSize
+
+					if GetSize then
+						Size += GetSize(Value)
+					end
+				end
+			else
+				--// REFERENCE
+				Size += 2
+			end
+		end
+	end
+
+	return Size
 end
 
 Bitstream._getValueSizeAndType = GetValueSizeAndType
+Bitstream._getValueSizeOnly = GetValueSizeOnly
+Bitstream._getSizeOfValues = GetSizeOfValues
 
-function Bitstream.Read(Data: buffer, References: References): { n: number, [number]: any }
-	debug.profilebegin("Bitstream.Read")
+function Bitstream.Read(Data: buffer, References: NBasedArray): { n: number, [number]: any }
+	local Buffer: buffer, ElementCount: number = GetAndCheckRemoteData(Data, References)
+	local Pointer: number = #HEADER + 2
 
-	local Buffer: ByteBuffer.ByteBuffer, ElementCount: number = GetAndCheckRemoteData(Data, References)
-	local Streamed: { n: number, [number]: any } = { n = 0 }
-	local Count: number = 0
+	local Streamed = table.create(ElementCount);
+	(Streamed :: NBasedArray).n = ElementCount
+	--local Streamed = { n = ElementCount }
 
-	local _buffer: buffer = Buffer._buffer
-	local Pointer: number = Buffer.Pointer
-
-	local ReferenceData: { any } = References.Data
-
-	while Count < ElementCount do
-		Count += 1
-
-		local ValueType: number = buffer.readu8(_buffer, Pointer)
+	for i: number = 1, ElementCount do
+		local ValueType: number = buffer.readu8(Buffer, Pointer)
 		Pointer += 1
-	
+
 		if ValueType == 0 then
 			continue
 		end
@@ -159,105 +175,72 @@ function Bitstream.Read(Data: buffer, References: References): { n: number, [num
 
 		if ValueType == 255 then
 			--// REFERENCE
-			local Position: number = buffer.readu16(_buffer, Pointer)
-			Value = ReferenceData[Position]
+			local Position: number = buffer.readu16(Buffer, Pointer)
+			Value = References[Position]
 			Pointer += 2
 		else
 			--// OTHER
 			local Type: StreamType = TypesFromValue[ValueType]
-			Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
-			Value = Type.Reader(Buffer, References)
-			Pointer = Buffer.Pointer --// Update pointer after
+
+			local Result: any, PtrOffset: number = Type.Reader(Buffer, References, Pointer)
+			Value = Result
+			Pointer += PtrOffset
 		end
 
-		Streamed[Count] = Value
+		Streamed[i] = Value
 	end
 
-	ByteBuffer.Destroy(Buffer)
-	
-	Streamed.n = Count
-
-	debug.profileend()
-	
-	return Streamed
+	return Streamed :: NBasedArray
 end
 
-function Bitstream.Create(...: any): (buffer, References)
-	debug.profilebegin("Bitstream.Create")
-
-	local Data: { n: number, [number]: any } = table.pack(...)
+function Bitstream.Create(Data: NBasedArray, BufferSize: number): (buffer, NBasedArray)
 	local DataCount: number = Data.n
 
-	local DataTypes: { StreamTypeMap } = {}
-	local BufferSize: number = 2 + #HEADER + 2
+	BufferSize += #HEADER + 2
 
-	--// First step, calculate buffer size
-	for i: number = 1, DataCount do
-		local Size: number, Type: StreamTypeMap = GetValueSizeAndType(Data[i])
-
-		BufferSize += Size
-
-		DataTypes[i] = Type
-	end
-	
-	--// Now create the buffer
-	local Buffer: ByteBuffer.ByteBuffer = ByteBuffer.new(BufferSize)
-	local References: References = {
-		Count = 0,
-		Data = {},
-	}
-
-	local _buffer: buffer = Buffer._buffer
-	local Pointer: number = Buffer.Pointer + #HEADER + 2
+	--// Create the buffer!
+	local Buffer: buffer = buffer.create(BufferSize)
+	local References: NBasedArray = { n = 0 }
+	local Pointer: number = #HEADER + 2
 
 	--// Write header
-	buffer.writestring(_buffer, 0, HEADER)
-	buffer.writeu16(_buffer, #HEADER, DataCount)
-	
+	buffer.writestring(Buffer, 0, HEADER)
+	buffer.writeu16(Buffer, #HEADER, DataCount)
+
 	for i: number = 1, DataCount do
 		local Value: any = Data[i]
 
 		if Value == nil then
-			buffer.writeu8(_buffer, Pointer, 0)
+			buffer.writeu8(Buffer, Pointer, 0)
 			Pointer += 1
 			continue
 		end
 
-		local TypeInfo: StreamTypeMap = DataTypes[i]
-		local Type: StreamType | string = TypeInfo.Type
-		
-		if Type == "REFERENCE" then
-			local NewCount: number = References.Count + 1
-			References.Count = NewCount
+		local Type: StreamType? = Types[type(Value)] or Types[typeof(Value)]
 
-			buffer.writeu8(_buffer, Pointer, 255)
-			buffer.writeu16(_buffer, Pointer + 1, NewCount)
-
-			Pointer += 3
-						
-			References.Data[NewCount] = Value
-		else
+		if Type ~= nil then
 			--// OTHER
-			local RealType: StreamType = Type :: StreamType
-			local ExtraTypes: { [any]: StreamTypeMap }? = TypeInfo.ExtraTypes
-
-			buffer.writeu8(_buffer, Pointer, RealType.Enum.Value)
+			buffer.writeu8(Buffer, Pointer, Type.Value)
 			Pointer += 1
 
-			Buffer.Pointer = Pointer --// Set buffer pointer, so the object can read
-			RealType.Writer(Buffer, References, Value, ExtraTypes)
-			Pointer = Buffer.Pointer --// Update pointer after
+			local PtrOffset: number = Type.Writer(Buffer, References, Pointer, Value)
+			Pointer += PtrOffset
+		else
+			local NewCount: number = References.n + 1
+			References.n = NewCount
+
+			buffer.writeu8(Buffer, Pointer, 255)
+			buffer.writeu16(Buffer, Pointer + 1, NewCount)
+
+			Pointer += 3
+
+			References[NewCount] = Value
 		end
 	end
 
-	local Payload: buffer = Buffer._buffer
-
-	ByteBuffer.Destroy(Buffer)
-
-	debug.profileend()
-
-	return Payload, References
+	return Buffer, References
 end
+
 
 --// Init types
 local TypeModules = {}
@@ -287,18 +270,20 @@ end)
 
 --// Create type objects and enums
 for Index: number, Module: { Name: string, Module: any } in TypeModules do
+	local Name: string = Module.Name
 	local RealModule: any = Module.Module
-	local Enum: StreamEnum = { Name = Module.Name, Value = Index }
+
 	local Type: StreamType = {
-		Enum = Enum,
+		Name = Name,
+		Value = Index,
+
 		Reader = RealModule.Reader,
 		Writer = RealModule.Writer,
 		Size = RealModule.Size,
 		GetSize = RealModule.GetSize,
 	}
 
-	Bitstream.Enums[Module.Name] = Enum
-	Types[Module.Name] = Type
+	Types[Name] = Type
 	TypesFromValue[Index] = Type
 end
 

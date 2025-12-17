@@ -2,37 +2,26 @@
 	Author: 8ch99
 	File: NumberRange.luau
 	Date written: 15th November 2025
-	Last edited: 29th November 2025
+	Last edited: 17th December 2025
 ]==]
 
 --!strict
 --!native
 --!optimize 2
 
-local ByteBuffer = require("../ByteBuffer")
-
 return {
 	Size = 8,
 
-	Reader = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }): NumberRange
-		local _buffer: buffer = Buffer._buffer
-		local Pointer: number = Buffer.Pointer
-
-		Buffer.Pointer += 8
-
+	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (NumberRange, number)
 		return NumberRange.new(
-			buffer.readf32(_buffer, Pointer),
-			buffer.readf32(_buffer, Pointer + 4)
-		)
+			buffer.readf32(Buffer, Pointer),
+			buffer.readf32(Buffer, Pointer + 4)
+		), 8
 	end,
 
-	Writer = function(Buffer: ByteBuffer.ByteBuffer, References: { Count: number, Data: { any } }, Value: NumberRange)
-		local _buffer: buffer = Buffer._buffer
-		local Pointer: number = Buffer.Pointer
-
-		Buffer.Pointer += 8
-		
-		buffer.writef32(_buffer, Pointer, Value.Min)
-		buffer.writef32(_buffer, Pointer + 4, Value.Max)
+	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: NumberRange): number
+		buffer.writef32(Buffer, Pointer, Value.Min)
+		buffer.writef32(Buffer, Pointer + 4, Value.Max)
+		return 8
 	end,
 }

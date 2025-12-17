@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: Server.luau
 	Date written: 15th November 2025
-	Last edited: 23rd November 2025
+	Last edited: 17th December 2025
 ]==]
 
 --!strict
@@ -21,6 +21,7 @@ local Bitstream = require("./Bitstream")
 
 local Create = Bitstream.Create
 local Read = Bitstream.Read
+local GetSizeOfValues = Bitstream._getSizeOfValues
 
 type OnServerEventCallback = {
 	Reliable: boolean,
@@ -29,11 +30,13 @@ type OnServerEventCallback = {
 
 type NetworkPacket = {
 	Data: buffer,
-	References: Bitstream.References,
+	References: { any },
+	ReferencesCount: number,
 }
 
 type SendPacket = {
-	Data: { any },
+	Size: number,
+	Data: Bitstream.NBasedArray,
 }
 
 type PlayerSendPacket = SendPacket & {
@@ -105,13 +108,13 @@ function Server.new(Name: string): Server
 
 	self._onServerEvent = self._remoteEvent.OnServerEvent:Connect(function(Sender: Player, IncomingData: { NetworkPacket })
 		for _, Packet: NetworkPacket in IncomingData do
-			HandleIncomingRequest(self, true, Sender, Packet.Data, Packet.References)
+			HandleIncomingRequest(self, true, Sender, Packet.Data, Packet.References, Packet.ReferencesCount)
 		end
 	end)
 
 	self._onUnrServerEvent = self._unrRemoteEvent.OnServerEvent:Connect(function(Sender: Player, IncomingData: { NetworkPacket })
 		for _, Packet: NetworkPacket in IncomingData do
-			HandleIncomingRequest(self, false, Sender, Packet.Data, Packet.References)
+			HandleIncomingRequest(self, false, Sender, Packet.Data, Packet.References, Packet.ReferencesCount)
 		end
 	end)
 	
@@ -151,25 +154,30 @@ function Server.new(Name: string): Server
 
 		debug.profilebegin("SwitchNet.Server.OnServerInvoke")
 
-		local Results: { any } = {}
+		local Results: Bitstream.NBasedArray
 
 		if IncomingData then
-			local Success: boolean, Args: { n: number, [number]: any } = pcall(Read, IncomingData.Data, IncomingData.References)
+			local RealReferences: Bitstream.NBasedArray = IncomingData.References :: Bitstream.NBasedArray
+			RealReferences.n = IncomingData.ReferencesCount
+
+			local Success: boolean, Args: Bitstream.NBasedArray = pcall(Read, IncomingData.Data, RealReferences)
 
 			if Success then
-				Results = { pcall(self._onServerInvokeCallback, Sender, table.unpack(Args)) }
+				Results = { pcall(self._onServerInvokeCallback, Sender, table.unpack(Args, 1, Args.n)) } :: Bitstream.NBasedArray
 				
 				if table.remove(Results, 1) == false then
-					Results = {}
+					Results = { n = 0 }
+				else
+					Results.n = #Results
 				end
 			end
 		end
 
-		if #Results == 0 then
+		if not Results or Results.n == 0 then
 			return nil
 		end
 
-		local Success: boolean, Buffer: buffer, References: Bitstream.References = pcall(Create, table.unpack(Results))
+		local Success: boolean, Buffer: buffer, References: Bitstream.NBasedArray = pcall(Create, Results, GetSizeOfValues(Results))
 
 		debug.profileend()
 
@@ -223,33 +231,48 @@ function Server.SetOnInvoke(self: Server, Function: (Player, ...any) -> ...any)
 end
 
 function Server.FireClient(self: Server, Player: Player, ...: any)
+	local Data: Bitstream.NBasedArray = table.pack(...)
+
 	table.insert(self._playerSendStack, {
 		Client = Player,
-		Data = { ... },
+		Size = GetSizeOfValues(Data),
+		Data = Data,
 	})
 end
 
 function Server.FireClientUnreliable(self: Server, Player: Player, ...: any)
+	local Data: Bitstream.NBasedArray = table.pack(...)
+
 	table.insert(self._playerSendStackUnr, {
 		Client = Player,
-		Data = { ... },
+		Size = GetSizeOfValues(Data),
+		Data = Data,
 	})
 end
 
 function Server.FireAllClients(self: Server, ...: any)
+	local Data: Bitstream.NBasedArray = table.pack(...)
+
 	table.insert(self._globalSendStack, {
-		Data = { ... },
+		Size = GetSizeOfValues(Data),
+		Data = Data,
 	})
 end
 
 function Server.FireAllClientsUnreliable(self: Server, ...: any)
+	local Data: Bitstream.NBasedArray = table.pack(...)
+
 	table.insert(self._globalSendStackUnr, {
-		Data = { ... },
+		Size = GetSizeOfValues(Data),
+		Data = Data,
 	})
 end
 
 function Server.InvokeClient(self: Server, Player: Player, ...: any): ...any
-	local Data: buffer, References: Bitstream.References = Create(...)
+	local SendData: Bitstream.NBasedArray = table.pack(...)
+	local BufferSize: number = GetSizeOfValues(SendData)
+
+	local Data: buffer, References: Bitstream.NBasedArray = Create(SendData, BufferSize)
 	local ResponsePacket: NetworkPacket
 
 	local Success: boolean, Error: string? = pcall(function()
@@ -268,24 +291,31 @@ function Server.InvokeClient(self: Server, Player: Player, ...: any): ...any
 		return nil
 	end
 
-	local Response: { n: number, [number]: any } = Read(ResponsePacket.Data, ResponsePacket.References)
+	local RealReferences: Bitstream.NBasedArray = ResponsePacket.References :: Bitstream.NBasedArray
+	RealReferences.n = ResponsePacket.ReferencesCount
+
+	local Response: Bitstream.NBasedArray = Read(ResponsePacket.Data, RealReferences)
 
 	return table.unpack(Response, 1, Response.n)
 end
 
 --// Private methods
 
-function Server._handleIncomingRequest(self: Server, Reliable: boolean, Sender: Player, Data: buffer, References: Bitstream.References)
+function Server._handleIncomingRequest(self: Server, Reliable: boolean, Sender: Player, Data: buffer, References: { any }, ReferencesCount: number)
 	if not next(self._onServerEventCallbacks) then
 		return
 	end
 
 	debug.profilebegin("SwitchNet.Server._handleIncomingRequest")
 
-	local Args: { n: number, [number]: any } = Read(Data, References)
+	local RealReferences: Bitstream.NBasedArray = References :: Bitstream.NBasedArray
+	RealReferences.n = ReferencesCount
+	
+	local Args: Bitstream.NBasedArray = Read(Data, RealReferences)
 	
 	for Name, Callback: OnServerEventCallback in self._onServerEventCallbacks do
 		if Callback.Reliable == Reliable then
+			--// TODO: Use xpcall instead to fetch error tracebacks
 			local Success: boolean, Error: any = pcall(task.spawn, Callback.Function, Sender, table.unpack(Args, 1, Args.n))
 
 			if not Success then
@@ -304,11 +334,12 @@ function Server._handleSendStack(self: Server, Reliable: boolean)
 	local NetworkPackets: { NetworkPacket } = {}
 
 	for _, Packet: SendPacket in Stack do
-		local Buffer: buffer, References: Bitstream.References = Create(table.unpack(Packet.Data))
+		local Buffer: buffer, References: Bitstream.NBasedArray = Create(Packet.Data, Packet.Size)
 
 		table.insert(NetworkPackets, {
 			Data = Buffer,
-			References = References,
+			References = References :: { any },
+			ReferencesCount = References.n,
 		})
 	end
 
@@ -341,11 +372,12 @@ function Server._handlePlayerSendStack(self: Server, Reliable: boolean)
 		local NetworkPackets: { NetworkPacket } = {}
 
 		for _, Packet: PlayerSendPacket in Packets do
-			local Buffer: buffer, References: Bitstream.References = Create(table.unpack(Packet.Data))
+			local Buffer: buffer, References: Bitstream.NBasedArray = Create(Packet.Data, Packet.Size)
 
 			table.insert(NetworkPackets, {
 				Data = Buffer,
-				References = References,
+				References = References :: { any },
+				ReferencesCount = References.n,
 			})
 		end
 

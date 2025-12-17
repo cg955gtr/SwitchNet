@@ -38,7 +38,7 @@ SOFTWARE.
 --!optimize 2
 
 local START_TIME: number = os.clock()
-local VERSION: string = "v0.1.3"
+local VERSION: string = "v0.2.0"
 
 --// Dependencies
 
@@ -55,6 +55,8 @@ local SwitchNet = {
 	Client = Client,
 }
 
-warn(`SwitchNet - {VERSION} Loaded in {os.clock() - START_TIME}! Created by 8ch99.`)
+local LOADING_TIME: number = os.clock() - START_TIME
+
+task.spawn(warn, `SwitchNet - {VERSION} Loaded in {LOADING_TIME}! Created by 8ch99.`)
 
 return SwitchNet
