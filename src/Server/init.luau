@@ -31,7 +31,6 @@ type OnServerEventCallback = {
 type NetworkPacket = {
 	Data: buffer,
 	References: { any },
-	ReferencesCount: number,
 }
 
 type SendPacket = {
@@ -64,6 +63,10 @@ export type Server = {
 	_onUnrServerEvent: RBXScriptConnection,
 	_replicationHandler: RBXScriptConnection,
 }
+
+local function VerifyNetworkPacketIntegrity(Packet: NetworkPacket): boolean
+	return type(Packet) == "table" and type(Packet.Data) == "buffer" and type(Packet.References) == "table"
+end
 
 --// @module Server
 
@@ -107,14 +110,30 @@ function Server.new(Name: string): Server
 	local HandlePlayerSendStack = Server._handlePlayerSendStack
 
 	self._onServerEvent = self._remoteEvent.OnServerEvent:Connect(function(Sender: Player, IncomingData: { NetworkPacket })
+		if type(IncomingData) ~= "table" then
+			return
+		end
+		
 		for _, Packet: NetworkPacket in IncomingData do
-			HandleIncomingRequest(self, true, Sender, Packet.Data, Packet.References, Packet.ReferencesCount)
+			if not VerifyNetworkPacketIntegrity(Packet) then
+				return
+			end
+
+			HandleIncomingRequest(self, true, Sender, Packet.Data, Packet.References)
 		end
 	end)
 
 	self._onUnrServerEvent = self._unrRemoteEvent.OnServerEvent:Connect(function(Sender: Player, IncomingData: { NetworkPacket })
+		if type(IncomingData) ~= "table" then
+			return
+		end
+
 		for _, Packet: NetworkPacket in IncomingData do
-			HandleIncomingRequest(self, false, Sender, Packet.Data, Packet.References, Packet.ReferencesCount)
+			if not VerifyNetworkPacketIntegrity(Packet) then
+				return
+			end
+
+			HandleIncomingRequest(self, false, Sender, Packet.Data, Packet.References)
 		end
 	end)
 	
@@ -157,8 +176,12 @@ function Server.new(Name: string): Server
 		local Results: Bitstream.NBasedArray
 
 		if IncomingData then
+			if not VerifyNetworkPacketIntegrity(IncomingData) then
+				return nil
+			end
+
 			local RealReferences: Bitstream.NBasedArray = IncomingData.References :: Bitstream.NBasedArray
-			RealReferences.n = IncomingData.ReferencesCount
+			RealReferences.n = #RealReferences
 
 			local Success: boolean, Args: Bitstream.NBasedArray = pcall(Read, IncomingData.Data, RealReferences)
 
@@ -279,6 +302,7 @@ function Server.InvokeClient(self: Server, Player: Player, ...: any): ...any
 		ResponsePacket = self._remoteFunction:InvokeClient(Player, {
 			Data = Data,
 			References = References,
+			ReferenceCount = References.n,
 		})
 	end)
 
@@ -291,8 +315,12 @@ function Server.InvokeClient(self: Server, Player: Player, ...: any): ...any
 		return nil
 	end
 
+	if not VerifyNetworkPacketIntegrity(ResponsePacket) then
+		return nil
+	end
+
 	local RealReferences: Bitstream.NBasedArray = ResponsePacket.References :: Bitstream.NBasedArray
-	RealReferences.n = ResponsePacket.ReferencesCount
+	RealReferences.n = #RealReferences
 
 	local Response: Bitstream.NBasedArray = Read(ResponsePacket.Data, RealReferences)
 
@@ -301,7 +329,7 @@ end
 
 --// Private methods
 
-function Server._handleIncomingRequest(self: Server, Reliable: boolean, Sender: Player, Data: buffer, References: { any }, ReferencesCount: number)
+function Server._handleIncomingRequest(self: Server, Reliable: boolean, Sender: Player, Data: buffer, References: { any })
 	if not next(self._onServerEventCallbacks) then
 		return
 	end
@@ -309,7 +337,7 @@ function Server._handleIncomingRequest(self: Server, Reliable: boolean, Sender: 
 	debug.profilebegin("SwitchNet.Server._handleIncomingRequest")
 
 	local RealReferences: Bitstream.NBasedArray = References :: Bitstream.NBasedArray
-	RealReferences.n = ReferencesCount
+	RealReferences.n = #RealReferences
 	
 	local Args: Bitstream.NBasedArray = Read(Data, RealReferences)
 	

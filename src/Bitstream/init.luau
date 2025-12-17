@@ -36,31 +36,6 @@ local TypesFromValue = {} :: { StreamType }
 Bitstream.Types = Types
 Bitstream.TypesFromValue = TypesFromValue
 
-local function GetAndCheckRemoteData(Data: buffer, References: NBasedArray): (buffer, number)
-	--// TODO: Add some extra checks probably? It might be good enough for now
-
-	--// Check remote arg types
-	assert(type(Data) == "buffer" and type(References) == "table", "invalid remote args!")
-
-	local Count: number = References.n
-	assert(type(Count) == "number" and tostring(Count) == tostring(math.floor(Count)), "invalid remote args!")
-
-	--// Check buffer size
-	local Size: number = buffer.len(Data)
-	assert(Size <= BUFFER_SIZE_LIMIT, "buffer too large!")
-
-	--// Read header
-	assert(buffer.readstring(Data, 0, #HEADER) == HEADER, "invalid data sequence provided (unknown header)")
-
-	--// Read element count, and check
-	local ElementCount: number = buffer.readu16(Data, #HEADER)
-	assert(ElementCount <= (Size // 2), "invalid data sequence provided (element size is too high relative to buffer size)")
-
-	--// Return bit buffer + element count
-	return Data, ElementCount
-end
-
-
 local function GetValueSizeAndType(Value: any): (number, StreamType?)
 	local Size: number = 1
 	local Type: StreamType?
@@ -155,8 +130,26 @@ Bitstream._getValueSizeAndType = GetValueSizeAndType
 Bitstream._getValueSizeOnly = GetValueSizeOnly
 Bitstream._getSizeOfValues = GetSizeOfValues
 
-function Bitstream.Read(Data: buffer, References: NBasedArray): { n: number, [number]: any }
-	local Buffer: buffer, ElementCount: number = GetAndCheckRemoteData(Data, References)
+function Bitstream.Read(Buffer: buffer, References: NBasedArray): { n: number, [number]: any }
+	--// TODO: Add some extra checks probably? It might be good enough for now
+	--// Remote typechecks are done seperately already
+
+	--local Count: number = References.n
+	--assert(type(Count) == "number" and tostring(Count) == tostring(math.floor(Count)), "invalid remote args!")
+
+	--// Check buffer size
+	local Size: number = buffer.len(Buffer)
+	assert(Size <= BUFFER_SIZE_LIMIT, "buffer too large!")
+
+	--// Read header
+	assert(buffer.readstring(Buffer, 0, #HEADER) == HEADER, "invalid data sequence provided (unknown header)")
+
+	--// Read element count, and check
+	local ElementCount: number = buffer.readu16(Buffer, #HEADER)
+	assert(ElementCount <= (Size // 2), "invalid data sequence provided (element size is too high relative to buffer size)")
+
+	--// Now start reading!
+
 	local Pointer: number = #HEADER + 2
 
 	local Streamed = table.create(ElementCount);
