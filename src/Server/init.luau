@@ -38,18 +38,14 @@ type SendPacket = {
 	Data: Bitstream.NBasedArray,
 }
 
-type PlayerSendPacket = SendPacket & {
-	Client: Player,
-}
-
 export type Server = {
 	Name: string,
 
 	_onServerInvokeCallback: ((Player, ...any) -> ...any)?,
 	_onServerEventCallbacks: { [string]: OnServerEventCallback },
 
-	_playerSendStack: { PlayerSendPacket },
-	_playerSendStackUnr: { PlayerSendPacket },
+	_playerSendStack: { [Player]: { SendPacket } },
+	_playerSendStackUnr: { [Player]: { SendPacket } },
 	_globalSendStack: { SendPacket },
 	_globalSendStackUnr: { SendPacket },
 
@@ -83,8 +79,8 @@ function Server.new(Name: string): Server
 	self.Name = Name
 
 	self._onServerEventCallbacks = {} :: { [string]: OnServerEventCallback }
-	self._playerSendStack = {} :: { PlayerSendPacket }
-	self._playerSendStackUnr = {} :: { PlayerSendPacket }
+	self._playerSendStack = {} :: { [Player]: { SendPacket } }
+	self._playerSendStackUnr = {} :: { [Player]: { SendPacket } }
 	self._globalSendStack = {} :: { SendPacket }
 	self._globalSendStackUnr = {} :: { SendPacket }
 
@@ -106,8 +102,6 @@ function Server.new(Name: string): Server
 	self._remoteContainer.Parent = ReplicatedStorage
 
 	local HandleIncomingRequest = Server._handleIncomingRequest
-	local HandleSendStack = Server._handleSendStack
-	local HandlePlayerSendStack = Server._handlePlayerSendStack
 
 	self._onServerEvent = self._remoteEvent.OnServerEvent:Connect(function(Sender: Player, IncomingData: { NetworkPacket })
 		if type(IncomingData) ~= "table" then
@@ -136,31 +130,98 @@ function Server.new(Name: string): Server
 			HandleIncomingRequest(self, false, Sender, Packet.Data, Packet.References)
 		end
 	end)
+
+	local Remote: RemoteEvent = self._remoteEvent
+	local UnreliableRemote: UnreliableRemoteEvent = self._unrRemoteEvent
 	
 	local _globalSendStack: { SendPacket } = self._globalSendStack
 	local _globalSendStackUnr: { SendPacket } = self._globalSendStackUnr
-	local _playerSendStack: { PlayerSendPacket } = self._playerSendStack
-	local _playerSendStackUnr: { PlayerSendPacket } = self._playerSendStackUnr
+	local _playerSendStack: { [Player]: { SendPacket } } = self._playerSendStack
+	local _playerSendStackUnr: { [Player]: { SendPacket } } = self._playerSendStackUnr
 
 	self._replicationHandler = RunService.PostSimulation:Connect(function()
 		debug.profilebegin("SwitchNet.Server._replicationHandler")
 
 		--// Global stacks (FireAllClients)
 		if #_globalSendStack > 0 then
-			HandleSendStack(self, true)
+			local NetworkPackets: { NetworkPacket } = {}
+
+			for _, Packet: SendPacket in _globalSendStack do
+				local Buffer: buffer, References: Bitstream.NBasedArray = Create(Packet.Data, Packet.Size)
+
+				table.insert(NetworkPackets, {
+					Data = Buffer,
+					References = References :: { any },
+				})
+			end
+
+			table.clear(_globalSendStack)
+
+			Remote:FireAllClients(NetworkPackets)
 		end
 
 		if #_globalSendStackUnr > 0 then
-			HandleSendStack(self, false)
+			local NetworkPackets: { NetworkPacket } = {}
+
+			for _, Packet: SendPacket in _globalSendStackUnr do
+				local Buffer: buffer, References: Bitstream.NBasedArray = Create(Packet.Data, Packet.Size)
+
+				table.insert(NetworkPackets, {
+					Data = Buffer,
+					References = References :: { any },
+				})
+			end
+
+			table.clear(_globalSendStackUnr)
+
+			UnreliableRemote:FireAllClients(NetworkPackets)
 		end
 
 		--// Per-player stacks
 		if #_playerSendStack > 0 then
-			HandlePlayerSendStack(self, true)
+			for Player: Player, Packets: { SendPacket } in _playerSendStack do
+				if Player.Parent == nil then
+					continue
+				end
+
+				local NetworkPackets: { NetworkPacket } = {}
+
+				for _, Packet: SendPacket in Packets do
+					local Buffer: buffer, References: Bitstream.NBasedArray = Create(Packet.Data, Packet.Size)
+
+					table.insert(NetworkPackets, {
+						Data = Buffer,
+						References = References :: { any },
+					})
+				end
+
+				Remote:FireClient(Player, NetworkPackets)
+			end
+
+			table.clear(_playerSendStack)
 		end
 
 		if #_playerSendStackUnr > 0 then
-			HandlePlayerSendStack(self, false)
+			for Player: Player, Packets: { SendPacket } in _playerSendStackUnr do
+				if Player.Parent == nil then
+					continue
+				end
+
+				local NetworkPackets: { NetworkPacket } = {}
+
+				for _, Packet: SendPacket in Packets do
+					local Buffer: buffer, References: Bitstream.NBasedArray = Create(Packet.Data, Packet.Size)
+
+					table.insert(NetworkPackets, {
+						Data = Buffer,
+						References = References :: { any },
+					})
+				end
+
+				UnreliableRemote:FireClient(Player, NetworkPackets)
+			end
+
+			table.clear(_playerSendStackUnr)
 		end
 
 		debug.profileend()
@@ -170,8 +231,6 @@ function Server.new(Name: string): Server
 		if not self._onServerInvokeCallback then
 			return nil
 		end
-
-		debug.profilebegin("SwitchNet.Server.OnServerInvoke")
 
 		local Results: Bitstream.NBasedArray
 
@@ -201,8 +260,6 @@ function Server.new(Name: string): Server
 		end
 
 		local Success: boolean, Buffer: buffer, References: Bitstream.NBasedArray = pcall(Create, Results, GetSizeOfValues(Results))
-
-		debug.profileend()
 
 		if not Success then
 			return nil
@@ -256,8 +313,15 @@ end
 function Server.FireClient(self: Server, Player: Player, ...: any)
 	local Data: Bitstream.NBasedArray = table.pack(...)
 
-	table.insert(self._playerSendStack, {
-		Client = Player,
+	local SendStack: { [Player]: { SendPacket } } = self._playerSendStack
+	local Stack: { SendPacket } = SendStack[Player]
+
+	if not Stack then
+		Stack = {} :: { SendPacket }
+		SendStack[Player] = Stack
+	end
+
+	table.insert(Stack, {
 		Size = GetSizeOfValues(Data),
 		Data = Data,
 	})
@@ -266,8 +330,15 @@ end
 function Server.FireClientUnreliable(self: Server, Player: Player, ...: any)
 	local Data: Bitstream.NBasedArray = table.pack(...)
 
-	table.insert(self._playerSendStackUnr, {
-		Client = Player,
+	local SendStack: { [Player]: { SendPacket } } = self._playerSendStackUnr
+	local Stack: { SendPacket } = SendStack[Player]
+
+	if not Stack then
+		Stack = {} :: { SendPacket }
+		SendStack[Player] = Stack
+	end
+
+	table.insert(Stack, {
 		Size = GetSizeOfValues(Data),
 		Data = Data,
 	})
@@ -353,65 +424,6 @@ function Server._handleIncomingRequest(self: Server, Reliable: boolean, Sender: 
 	end
 
 	debug.profileend()
-end
-
-function Server._handleSendStack(self: Server, Reliable: boolean)
-	local Remote: RemoteEvent | UnreliableRemoteEvent = if Reliable then self._remoteEvent else self._unrRemoteEvent
-	local Stack: { SendPacket } = if Reliable then self._globalSendStack else self._globalSendStackUnr
-
-	local NetworkPackets: { NetworkPacket } = {}
-
-	for _, Packet: SendPacket in Stack do
-		local Buffer: buffer, References: Bitstream.NBasedArray = Create(Packet.Data, Packet.Size)
-
-		table.insert(NetworkPackets, {
-			Data = Buffer,
-			References = References :: { any },
-			ReferencesCount = References.n,
-		})
-	end
-
-	table.clear(Stack);
-
-	(Remote :: RemoteEvent):FireAllClients(NetworkPackets)
-		--// ^ I hate the typechecker
-end
-
-function Server._handlePlayerSendStack(self: Server, Reliable: boolean)
-	local Remote: RemoteEvent | UnreliableRemoteEvent = if Reliable then self._remoteEvent else self._unrRemoteEvent
-	local Stack: { PlayerSendPacket } = if Reliable then self._playerSendStack else self._playerSendStackUnr
-
-	local PlayerDelegatedPackets: { [Player]: { PlayerSendPacket } } = {}
-
-	for _, Packet: PlayerSendPacket in Stack do
-		local PlayerPacketPool: { PlayerSendPacket } = PlayerDelegatedPackets[Packet.Client]
-				
-		if not PlayerPacketPool then
-			PlayerPacketPool = {}
-			PlayerDelegatedPackets[Packet.Client] = PlayerPacketPool
-		end
-
-		table.insert(PlayerPacketPool, Packet)
-	end
-
-	table.clear(Stack)
-
-	for Player: Player, Packets: { PlayerSendPacket } in PlayerDelegatedPackets do
-		local NetworkPackets: { NetworkPacket } = {}
-
-		for _, Packet: PlayerSendPacket in Packets do
-			local Buffer: buffer, References: Bitstream.NBasedArray = Create(Packet.Data, Packet.Size)
-
-			table.insert(NetworkPackets, {
-				Data = Buffer,
-				References = References :: { any },
-				ReferencesCount = References.n,
-			})
-		end
-
-		(Remote :: RemoteEvent):FireClient(Player, NetworkPackets)
-		--// ^ I hate the typechecker
-	end
 end
 
 return Server

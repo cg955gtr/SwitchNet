@@ -138,8 +138,6 @@ function Client.new(Name: string): Client
 			return nil
 		end
 
-		debug.profilebegin("SwitchNet.Client.OnClientInvoke")
-
 		local Results: Bitstream.NBasedArray
 
 		if IncomingData then
@@ -166,8 +164,6 @@ function Client.new(Name: string): Client
 		end
 
 		local Success: boolean, Buffer: buffer, References: Bitstream.NBasedArray = pcall(Create, Results, GetSizeOfValues(Results))
-
-		debug.profileend()
 
 		if not Success then
 			return nil
@@ -307,7 +303,6 @@ function Client._handleSendStack(self: Client, Reliable: boolean)
 		table.insert(NetworkPackets, {
 			Data = Buffer,
 			References = References :: { any },
-			ReferencesCount = References.n,
 		})
 	end
 
