@@ -46,6 +46,37 @@ function Server.Destroy(self: Server): ()
 
 
 
+## Server.Wait
+```luau
+function Server.Wait(self: Server): ...any
+```
+> Yields the current thread until a remote request is sent, and returns the calling player + received arguments.
+
+### Parameters
+- `self` : `Server` - The SwitchNet server instance.
+### Example
+```luau
+local Caller: Player, Time: number = Server.Wait(Remote)
+
+print(`{Caller.Name} sent their timestamp: {Time}`)
+```
+
+## Server.WaitUnreliable
+```luau
+function Server.WaitUnreliable(self: Server): ...any
+```
+> Yields the current thread until a (unreliable) remote request is sent, and returns the calling player + received arguments.
+
+### Parameters
+- `self` : `Server` - The SwitchNet server instance.
+### Example
+```luau
+local Caller: Player, Time: number = Server.WaitUnreliable(Remote)
+
+print(`(Unreliable) {Caller.Name} sent their timestamp: {Time}`)
+```
+
+
 
 ## Server.Connect
 ```luau
@@ -239,6 +270,37 @@ function Client.Destroy(self: Client): ()
 ### Parameters
 - `self` : `Client` - The SwitchNet Client instance.
 
+
+
+## Client.Wait
+```luau
+function Client.Wait(self: Client): ...any
+```
+> Yields the current thread until a remote request is sent, and returns the received arguments.
+
+### Parameters
+- `self` : `Client` - The SwitchNet Client instance.
+### Example
+```luau
+local Time: number = Client.Wait(Remote)
+
+print(`The server sent their timestamp: {Time}`)
+```
+
+## Client.WaitUnreliable
+```luau
+function Client.WaitUnreliable(self: Client): ...any
+```
+> Yields the current thread until a (unreliable) remote request is sent, and returns the received arguments.
+
+### Parameters
+- `self` : `Client` - The SwitchNet Client instance.
+### Example
+```luau
+local Time: number = Client.WaitUnreliable(Remote)
+
+print(`(Unreliable) The server sent their timestamp: {Time}`)
+```
 
 
 
