@@ -41,7 +41,7 @@ export type SendPacket = {
 export type Client = {
 	Name: string,
 
-	_onClientInvokeCallback: ((Player, ...any) -> ...any)?,
+	_onClientInvokeCallback: ((...any) -> ...any)?,
 	_onClientEventCallbacks: { [string]: OnClientEventCallback },
 
 	_sendStack: { SendPacket },
@@ -218,7 +218,7 @@ function Client.Destroy(self: Client)
 	self = nil :: never
 end
 
-function Client.Connect(self: Client, Name: string, Function: (Player, ...any) -> (), Unreliable: boolean?)
+function Client.Connect(self: Client, Name: string, Function: (...any) -> (), Unreliable: boolean?)
 	local Callback: OnClientEventCallback = {
 		Reliable = not Unreliable,
 		Function = Function,
@@ -231,7 +231,7 @@ function Client.Disconnect(self: Client, Name: string)
 	self._onClientEventCallbacks[Name] = nil
 end
 
-function Client.SetOnInvoke(self: Client, Function: (Player, ...any) -> ...any)
+function Client.SetOnInvoke(self: Client, Function: (...any) -> ...any)
 	self._onClientInvokeCallback = Function
 end
 

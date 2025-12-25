@@ -36,35 +36,6 @@ local TypesFromValue = {} :: { StreamType }
 Bitstream.Types = Types
 Bitstream.TypesFromValue = TypesFromValue
 
-local function GetValueSizeAndType(Value: any): (number, StreamType?)
-	local Size: number = 1
-	local Type: StreamType?
-
-	if Value ~= nil then
-		Type = Types[type(Value)] or Types[typeof(Value)]
-
-		if Type then
-			--// OTHER
-			local _size: number? = Type.Size
-
-			if _size then
-				Size += _size
-			else
-				local GetSize = Type.GetSize
-
-				if GetSize then
-					Size += GetSize(Value)
-				end
-			end
-		else
-			--// REFERENCE
-			Size += 2
-		end
-	end
-
-	return Size, Type
-end
-
 local function GetValueSizeOnly(Value: any): number
 	local Size: number = 1
 
@@ -126,7 +97,6 @@ local function GetSizeOfValues(Data: NBasedArray, Length: number?): number
 	return Size
 end
 
-Bitstream._getValueSizeAndType = GetValueSizeAndType
 Bitstream._getValueSizeOnly = GetValueSizeOnly
 Bitstream._getSizeOfValues = GetSizeOfValues
 
