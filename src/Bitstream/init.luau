@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: Bitstream.luau
 	Date written: 15th November 2025
-	Last edited: 17th December 2025
+	Last edited: 25th December 2025
 ]==]
 
 --!strict

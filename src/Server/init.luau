@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: Server.luau
 	Date written: 15th November 2025
-	Last edited: 17th December 2025
+	Last edited: 25th December 2025
 ]==]
 
 --!strict
@@ -23,11 +23,6 @@ local Create = Bitstream.Create
 local Read = Bitstream.Read
 local GetSizeOfValues = Bitstream._getSizeOfValues
 
-type OnServerEventCallback = {
-	Reliable: boolean,
-	Function: (Player, ...any) -> (),
-}
-
 type NetworkPacket = {
 	Data: buffer,
 	References: { any },
@@ -42,12 +37,17 @@ export type Server = {
 	Name: string,
 
 	_onServerInvokeCallback: ((Player, ...any) -> ...any)?,
-	_onServerEventCallbacks: { [string]: OnServerEventCallback },
+
+	_onServerEventCallbacks: { [string]: (Player, ...any) -> () },
+	_onServerEventCallbacksUnr: { [string]: (Player, ...any) -> () },
 
 	_playerSendStack: { [Player]: { SendPacket } },
 	_playerSendStackUnr: { [Player]: { SendPacket } },
 	_globalSendStack: { SendPacket },
 	_globalSendStackUnr: { SendPacket },
+
+	_waitingThreads: { [thread]: boolean },
+	_waitingThreadsUnr: { [thread]: boolean },
 
 	_remoteContainer: Folder,
 	
@@ -72,62 +72,38 @@ function Server.new(Name: string): Server
 	assert(ACTIVE_REMOTES[Name] == nil, `remote bridge '{Name}' already exists!`)
 	ACTIVE_REMOTES[Name] = true
 
-	local self = {} :: Server
+	local self = {
+		Name = Name,
 
-	self.Name = Name
+		_waitingThreads = {} :: { [thread]: boolean },
+		_waitingThreadsUnr = {} :: { [thread]: boolean },
 
-	self._onServerEventCallbacks = {} :: { [string]: OnServerEventCallback }
-	self._playerSendStack = {} :: { [Player]: { SendPacket } }
-	self._playerSendStackUnr = {} :: { [Player]: { SendPacket } }
-	self._globalSendStack = {} :: { SendPacket }
-	self._globalSendStackUnr = {} :: { SendPacket }
+		_onServerEventCallbacks = {} :: { [string]: (Player, ...any) -> () },
+		_onServerEventCallbacksUnr = {} :: { [string]: (Player, ...any) -> () },
 
-	self._remoteContainer = Instance.new("Folder") :: Folder
+		_playerSendStack = {} :: { [Player]: { SendPacket } },
+		_playerSendStackUnr = {} :: { [Player]: { SendPacket } },
+		_globalSendStack = {} :: { SendPacket },
+		_globalSendStackUnr = {} :: { SendPacket },
+
+		_remoteContainer = Instance.new("Folder") :: Folder,
+		_remoteEvent = Instance.new("RemoteEvent") :: RemoteEvent,
+		_unrRemoteEvent = Instance.new("UnreliableRemoteEvent") :: UnreliableRemoteEvent,
+		_remoteFunction = Instance.new("RemoteFunction") :: RemoteFunction,
+	} :: Server
+
 	self._remoteContainer.Name = Name
-
-	self._remoteEvent = Instance.new("RemoteEvent") :: RemoteEvent
 	self._remoteEvent.Name = "Reliable"
-
-	self._unrRemoteEvent = Instance.new("UnreliableRemoteEvent") :: UnreliableRemoteEvent
 	self._unrRemoteEvent.Name = "Unreliable"
-
-	self._remoteFunction = Instance.new("RemoteFunction") :: RemoteFunction
 	self._remoteFunction.Name = "Function"
 
 	self._remoteEvent.Parent = self._remoteContainer
 	self._unrRemoteEvent.Parent = self._remoteContainer
 	self._remoteFunction.Parent = self._remoteContainer
+
 	self._remoteContainer.Parent = ReplicatedStorage
 
-	local HandleIncomingRequest = Server._handleIncomingRequest
-
-	self._onServerEvent = self._remoteEvent.OnServerEvent:Connect(function(Sender: Player, IncomingData: { NetworkPacket })
-		if type(IncomingData) ~= "table" then
-			return
-		end
-		
-		for _, Packet: NetworkPacket in IncomingData do
-			if not VerifyNetworkPacketIntegrity(Packet) then
-				return
-			end
-
-			HandleIncomingRequest(self, true, Sender, Packet.Data, Packet.References)
-		end
-	end)
-
-	self._onUnrServerEvent = self._unrRemoteEvent.OnServerEvent:Connect(function(Sender: Player, IncomingData: { NetworkPacket })
-		if type(IncomingData) ~= "table" then
-			return
-		end
-
-		for _, Packet: NetworkPacket in IncomingData do
-			if not VerifyNetworkPacketIntegrity(Packet) then
-				return
-			end
-
-			HandleIncomingRequest(self, false, Sender, Packet.Data, Packet.References)
-		end
-	end)
+	--// Signals
 
 	local Remote: RemoteEvent = self._remoteEvent
 	local UnreliableRemote: UnreliableRemoteEvent = self._unrRemoteEvent
@@ -137,8 +113,104 @@ function Server.new(Name: string): Server
 	local _playerSendStack: { [Player]: { SendPacket } } = self._playerSendStack
 	local _playerSendStackUnr: { [Player]: { SendPacket } } = self._playerSendStackUnr
 
+	self._onServerEvent = self._remoteEvent.OnServerEvent:Connect(function(Sender: Player, IncomingData: { NetworkPacket })
+		if type(IncomingData) ~= "table" then
+			return
+		end
+
+		local OnServerEventCallbacks: { [string]: (Player, ...any) -> () } = self._onServerEventCallbacks
+		local WaitingThreads: { [thread]: boolean } = self._waitingThreads
+
+		if not next(OnServerEventCallbacks) and not next(WaitingThreads) then
+			return
+		end
+
+		debug.profilebegin("SwitchNet.Server Incoming Packets Job")
+		
+		for _, Packet: NetworkPacket in IncomingData do
+			if not VerifyNetworkPacketIntegrity(Packet) then
+				return
+			end
+			
+			local Data: buffer = Packet.Data
+			local References: { any } = Packet.References
+
+			local RealReferences: Bitstream.NBasedArray = References :: Bitstream.NBasedArray
+			RealReferences.n = #RealReferences
+			
+			local Args: Bitstream.NBasedArray = Read(Data, RealReferences)
+			local Amount: number = Args.n
+
+			--// Free waiting threads
+			for Thread: thread in WaitingThreads do
+				pcall(task.spawn, Thread, Sender, table.unpack(Args, 1, Amount))
+			end
+
+			table.clear(WaitingThreads)
+			
+			--// Fire callbacks
+			for Name: string, Function: (Player, ...any) -> () in OnServerEventCallbacks do
+				--// TODO: Use xpcall instead to fetch error tracebacks
+				local Success: boolean, Error: any = pcall(task.spawn, Function, Sender, table.unpack(Args, 1, Amount))
+
+				if not Success then
+					TestService:Error(`SwitchNet.Server '{self.Name}' Callback Error:\n{Error}`)
+				end
+			end
+		end
+	end)
+
+	self._onUnrServerEvent = self._unrRemoteEvent.OnServerEvent:Connect(function(Sender: Player, IncomingData: { NetworkPacket })
+		if type(IncomingData) ~= "table" then
+			return
+		end
+
+		local OnServerEventCallbacks: { [string]: (Player, ...any) -> () } = self._onServerEventCallbacksUnr
+		local WaitingThreads: { [thread]: boolean } = self._waitingThreadsUnr
+
+		if not next(OnServerEventCallbacks) and not next(WaitingThreads) then
+			return
+		end
+
+		debug.profilebegin("SwitchNet.Server Incoming Packets Job (Unreliable)")
+
+		for _, Packet: NetworkPacket in IncomingData do
+			if not VerifyNetworkPacketIntegrity(Packet) then
+				return
+			end
+
+			local Data: buffer = Packet.Data
+			local References: { any } = Packet.References
+
+			local RealReferences: Bitstream.NBasedArray = References :: Bitstream.NBasedArray
+			RealReferences.n = #RealReferences
+			
+			local Args: Bitstream.NBasedArray = Read(Data, RealReferences)
+			local Amount: number = Args.n
+
+			--// Free waiting threads
+			for Thread: thread in WaitingThreads do
+				pcall(task.spawn, Thread, Sender, table.unpack(Args, 1, Amount))
+			end
+
+			table.clear(WaitingThreads)
+			
+			--// Fire callbacks
+			for Name: string, Function: (Player, ...any) -> () in OnServerEventCallbacks do
+				--// TODO: Use xpcall instead to fetch error tracebacks
+				local Success: boolean, Error: any = pcall(task.spawn, Function, Sender, table.unpack(Args, 1, Amount))
+
+				if not Success then
+					TestService:Error(`SwitchNet.Server '{self.Name}' (UNRELIABLE) Callback Error:\n{Error}`)
+				end
+			end
+		end
+
+		debug.profileend()
+	end)
+
 	self._replicationHandler = RunService.PostSimulation:Connect(function()
-		debug.profilebegin("SwitchNet.Server._replicationHandler")
+		debug.profilebegin("SwitchNet.Server Outgoing Packets Job")
 
 		--// Per-player stacks
 		for Player: Player, Packets: { SendPacket } in _playerSendStack do
@@ -276,7 +348,20 @@ function Server.Destroy(self: Server)
 	self._remoteContainer:Destroy()
 	--// ^ also destroys the remote events
 
+	--// Free yielding threads (in-case they are still present)
+	for Thread: thread in self._waitingThreads do
+		pcall(task.spawn, Thread)
+	end
+
+	for Thread: thread in self._waitingThreadsUnr do
+		pcall(task.spawn, Thread)
+	end
+
+	table.clear(self._waitingThreads)
+	table.clear(self._waitingThreadsUnr)
+	
 	table.clear(self._onServerEventCallbacks)
+	table.clear(self._onServerEventCallbacksUnr)
 	table.clear(self._playerSendStack)
 	table.clear(self._playerSendStackUnr)
 	table.clear(self._globalSendStack)
@@ -287,17 +372,37 @@ function Server.Destroy(self: Server)
 	self = nil :: never
 end
 
-function Server.Connect(self: Server, Name: string, Function: (Player, ...any) -> (), Unreliable: boolean?)
-	local Callback: OnServerEventCallback = {
-		Reliable = not Unreliable,
-		Function = Function,
-	}
+function Server.Wait(self: Server): ...any
+	local Thread: thread = coroutine.running()
 
-	self._onServerEventCallbacks[Name] = Callback
+	self._waitingThreads[Thread] = true
+	
+	return coroutine.yield()
+end
+
+function Server.WaitUnreliable(self: Server): ...any
+	local Thread: thread = coroutine.running()
+
+	self._waitingThreadsUnr[Thread] = true
+	
+	return coroutine.yield()
+end
+
+--// TODO: Make seperated functions for binding to asnyc calls?
+function Server.Connect(self: Server, Name: string, Function: (Player, ...any) -> ())
+	self._onServerEventCallbacks[Name] = Function
+end
+
+function Server.ConnectUnreliable(self: Server, Name: string, Function: (Player, ...any) -> ())
+	self._onServerEventCallbacksUnr[Name] = Function
 end
 
 function Server.Disconnect(self: Server, Name: string)
 	self._onServerEventCallbacks[Name] = nil
+end
+
+function Server.DisconnectUnreliable(self: Server, Name: string)
+	self._onServerEventCallbacksUnr[Name] = nil
 end
 
 function Server.SetOnInvoke(self: Server, Function: (Player, ...any) -> ...any)
@@ -390,34 +495,6 @@ function Server.InvokeClient(self: Server, Player: Player, ...: any): ...any
 	local Response: Bitstream.NBasedArray = Read(ResponsePacket.Data, RealReferences)
 
 	return table.unpack(Response, 1, Response.n)
-end
-
---// Private methods
-
-function Server._handleIncomingRequest(self: Server, Reliable: boolean, Sender: Player, Data: buffer, References: { any })
-	if not next(self._onServerEventCallbacks) then
-		return
-	end
-
-	debug.profilebegin("SwitchNet.Server._handleIncomingRequest")
-
-	local RealReferences: Bitstream.NBasedArray = References :: Bitstream.NBasedArray
-	RealReferences.n = #RealReferences
-	
-	local Args: Bitstream.NBasedArray = Read(Data, RealReferences)
-	
-	for Name, Callback: OnServerEventCallback in self._onServerEventCallbacks do
-		if Callback.Reliable == Reliable then
-			--// TODO: Use xpcall instead to fetch error tracebacks
-			local Success: boolean, Error: any = pcall(task.spawn, Callback.Function, Sender, table.unpack(Args, 1, Args.n))
-
-			if not Success then
-				TestService:Error(`NetworkServer '{self.Name}' Callback Error:\n{Error}`)
-			end
-		end
-	end
-
-	debug.profileend()
 end
 
 return Server

@@ -2,7 +2,7 @@
 
 This document contains all the documentation for SwitchNet usage.
 
-> **NOTE:** Properties/types/methods prefixed with `_` are intended for internal use only.
+> **NOTE:** Properties/variables/methods prefixed with `_` are intended for internal use only.
 
 The respective library/libraries can be fetched by fetching the main module and referencing like so:
 
@@ -44,18 +44,19 @@ function Server.Destroy(self: Server): ()
 ### Parameters
 - `self` : `Server` - The SwitchNet server instance.
 
+
+
+
 ## Server.Connect
 ```luau
-function Server.Connect(self: Server, Name: string, Function: (Player, ...any) -> (), Unreliable: boolean?): ()
+function Server.Connect(self: Server, Name: string, Function: (Player, ...any) -> ()): ()
 ```
 > Creates a new remote input callback with the given name, and function to use.
 
-> **NOTE:** To listen to UnreliableRemoteEvent inputs, set the `Unreliable` parameter to `true`.
 ### Parameters
 - `self` : `Server` - The SwitchNet server instance.
 - `Name` : `string` - The name of the callback.
 - `Function` : `(Player, ...any) -> ()` - The function to use in the callback.
-- `Unreliable` : `boolean?` **(optional)** - Whether the callback should listen to UnreliableRemoteEvent requests instead of standard RemoteEvent requests.
 ### Example
 ```luau
 Server.Connect(Remote, "Main", function(Sender: Player, ...: any)
@@ -63,6 +64,26 @@ Server.Connect(Remote, "Main", function(Sender: Player, ...: any)
 	print(`User {Sender.Name} sent us data! Data:`, ...)
 end)
 ```
+
+## Server.ConnectUnreliable
+```luau
+function Server.ConnectUnreliable(self: Server, Name: string, Function: (Player, ...any) -> ()): ()
+```
+> Creates a new (unreliable) remote input callback with the given name, and function to use.
+
+### Parameters
+- `self` : `Server` - The SwitchNet server instance.
+- `Name` : `string` - The name of the callback.
+- `Function` : `(Player, ...any) -> ()` - The function to use in the callback.
+### Example
+```luau
+Server.ConnectUnreliable(Remote, "Main", function(Sender: Player, ...: any)
+	--// ^ Basically as if you did .OnServerEvent!
+	print(`User {Sender.Name} sent us data! Data:`, ...)
+end)
+```
+
+
 
 ## Server.Disconnect
 ```luau
@@ -76,6 +97,21 @@ function Server.Disconnect(self: Server, Name: string): ()
 ```luau
 Server.Disconnect(Remote, "Main")
 ```
+
+## Server.Disconnect
+```luau
+function Server.DisconnectUnreliable(self: Server, Name: string): ()
+```
+> Removes the current remote (unreliable) input callback with the given name (if it exists). Use this if you don't want the given callback to listen to remote calls anymore.
+### Parameters
+- `self` : `Server` - The SwitchNet server instance.
+- `Name` : `string` - The name of the callback.
+### Example
+```luau
+Server.DisconnectUnreliable(Remote, "Main")
+```
+
+
 
 ## Server.SetOnInvoke
 ```luau
@@ -97,6 +133,8 @@ Server.SetOnInvoke(Remote, function(Player: Player, RequestType: string): any
 	return "unknown_request"
 end)
 ```
+
+
 
 ## Server.FireClient
 ```luau
@@ -171,7 +209,13 @@ local Date: DateTypeResult = os.date("!*t", Time)
 print(`The player's local time is: {string.format("%02d:%02d:%02d", Date.hour, Date.min, Date.sec)}`)
 ```
 
+
+
+
 # > SwitchNet.Client
+
+
+
 
 ## Client.new
 ```luau
@@ -195,6 +239,9 @@ function Client.Destroy(self: Client): ()
 ### Parameters
 - `self` : `Client` - The SwitchNet Client instance.
 
+
+
+
 ## Client.Connect
 ```luau
 function Client.Connect(self: Client, Name: string, Function: (...any) -> (), Unreliable: boolean?): ()
@@ -215,6 +262,26 @@ Client.Connect(Remote, "Main", function(...: any)
 end)
 ```
 
+
+## Client.ConnectUnreliable
+```luau
+function Client.ConnectUnreliable(self: Client, Name: string, Function: (...any) -> ()): ()
+```
+> Creates a new (unreliable) remote input callback with the given name, and function to use.
+### Parameters
+- `self` : `Client` - The SwitchNet Client instance.
+- `Name` : `string` - The name of the callback.
+- `Function` : `(...any) -> ()` - The function to use in the callback.
+### Example
+```luau
+Client.ConnectUnreliable(Remote, "Main", function(...: any)
+	--// ^ Basically as if you did .OnServerEvent!
+	print(`The server sent us data! Data:`, ...)
+end)
+```
+
+
+
 ## Client.Disconnect
 ```luau
 function Client.Disconnect(self: Client, Name: string): ()
@@ -227,6 +294,21 @@ function Client.Disconnect(self: Client, Name: string): ()
 ```luau
 Client.Disconnect(Remote, "Main")
 ```
+
+## Client.DisconnectUnreliable
+```luau
+function Client.DisconnectUnreliable(self: Client, Name: string): ()
+```
+> Removes the current (unreliable) remote input callback with the given name (if it exists). Use this if you don't want the given callback to listen to remote calls anymore.
+### Parameters
+- `self` : `Client` - The SwitchNet Client instance.
+- `Name` : `string` - The name of the callback.
+### Example
+```luau
+Client.DisconnectUnreliable(Remote, "Main")
+```
+
+
 
 ## Client.SetOnInvoke
 ```luau

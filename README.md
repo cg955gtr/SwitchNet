@@ -1,11 +1,7 @@
 # SwitchNet
 
-A blazingly fast and easy to use networking module for reducing bandwidth and overhead across remotes.
-It is designed to be easy to use and allows for communication via reliable, unreliable, and remote functions, while also prioritizing performance simultaneously.
-
-For optimization, it uses buffer compression to reduce bandwidth as much as possible, and every remote request via the reliable/unreliable bridges are batched per frame to reduce the amount of remote requests made, helping reduce total network overhead and request amounts.
-
-> More on the buffer compression part, the compression technique works by instead calculating the size of the buffer and only creating it once, rather than constantly expanding it for every write operation. Most buffer-based libraries use the expansion approach, and because Luau's buffer library does not have a native buffer expansion method, it ends up wasting heaps of CPU. This helps save LOTS of CPU usage, especially with larger payloads.
+A blazingly fast and easy to use buffer-based networking module for reducing bandwidth and overhead across remotes.
+It is designed to be easy to use and allows for communication via reliable, unreliable, and remote functions, while also prioritizing performance.
 
 > **NOTE:** Unsupported objects (e.g. Instances) are simply passed through a reference routing table, as instances like that are not possible to compress currently.
 

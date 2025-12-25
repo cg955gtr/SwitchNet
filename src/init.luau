@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: SwitchNet.luau
 	Date written: 15th November 2025
-	Last edited: 18th December 2025
+	Last edited: 25th December 2025
 
 	A blazingly fast and easy to use networking module for reducing bandwidth and overhead across remotes.
 ]==]
@@ -38,7 +38,7 @@ SOFTWARE.
 --!optimize 2
 
 local START_TIME: number = os.clock()
-local VERSION: string = "v0.2.5"
+local VERSION: string = "v1.0.0"
 
 --// Dependencies
 
