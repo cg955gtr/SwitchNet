@@ -38,7 +38,7 @@ SOFTWARE.
 --!optimize 2
 
 local START_TIME: number = os.clock()
-local VERSION: string = "v0.2.4"
+local VERSION: string = "v0.2.5"
 
 --// Dependencies
 
