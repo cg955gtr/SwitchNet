@@ -36,6 +36,8 @@ type SendPacket = {
 export type Server = {
 	Name: string,
 
+	_parallel: boolean,
+
 	_onServerInvokeCallback: ((Player, ...any) -> ...any)?,
 
 	_onServerEventCallbacks: { [string]: (Player, ...any) -> () },
@@ -64,16 +66,46 @@ local function VerifyNetworkPacketIntegrity(Packet: NetworkPacket): boolean
 	return type(Packet) == "table" and type(Packet.Data) == "buffer" and type(Packet.References) == "table"
 end
 
+local function GetCallingScript(): Instance?
+	local Src: string = debug.info(3, "s")
+
+	if Src == "" then
+		return nil
+	end
+
+	local Current: Instance? = game
+
+	for _, Name in string.split(Src, ".") do
+		Current = (Current :: Instance):FindFirstChild(Name)
+		if not Current then
+			return nil
+		end
+	end
+
+	if Current == game then
+		return nil
+	end
+
+	return Current
+end
+
 --// @module Server
 
 local Server = {}
 
 function Server.new(Name: string): Server
 	assert(ACTIVE_REMOTES[Name] == nil, `remote bridge '{Name}' already exists!`)
+	assert(ReplicatedStorage:FindFirstChild(Name) == nil, `RS has an instance with the same name already! Use a different name to '{Name}'.`)
+	assert(RunService:IsServer(), "This is a server-only function!")
+
 	ACTIVE_REMOTES[Name] = true
+
+	local CallingScript = GetCallingScript()
 
 	local self = {
 		Name = Name,
+
+		_parallel = if CallingScript then CallingScript:FindFirstAncestorOfClass("Actor") ~= nil else false,
 
 		_waitingThreads = {} :: { [thread]: boolean },
 		_waitingThreadsUnr = {} :: { [thread]: boolean },
@@ -125,10 +157,18 @@ function Server.new(Name: string): Server
 			return
 		end
 
+		if self._parallel then
+			task.desynchronize()
+		end
+
 		debug.profilebegin("SwitchNet.Server Incoming Packets Job")
 		
 		for _, Packet: NetworkPacket in IncomingData do
 			if not VerifyNetworkPacketIntegrity(Packet) then
+				if self._parallel then
+					task.synchronize()
+				end
+
 				return
 			end
 			
@@ -158,6 +198,10 @@ function Server.new(Name: string): Server
 				end
 			end
 		end
+
+		if self._parallel then
+			task.synchronize()
+		end
 	end)
 
 	self._onUnrServerEvent = self._unrRemoteEvent.OnServerEvent:Connect(function(Sender: Player, IncomingData: { NetworkPacket })
@@ -172,10 +216,18 @@ function Server.new(Name: string): Server
 			return
 		end
 
+		if self._parallel then
+			task.desynchronize()
+		end
+
 		debug.profilebegin("SwitchNet.Server Incoming Packets Job (Unreliable)")
 
 		for _, Packet: NetworkPacket in IncomingData do
 			if not VerifyNetworkPacketIntegrity(Packet) then
+				if self._parallel then
+					task.synchronize()
+				end
+
 				return
 			end
 
@@ -207,9 +259,13 @@ function Server.new(Name: string): Server
 		end
 
 		debug.profileend()
+
+		if self._parallel then
+			task.synchronize()
+		end
 	end)
 
-	self._replicationHandler = RunService.PostSimulation:Connect(function()
+	self._replicationHandler = RunService.PostSimulation[if self._parallel then "ConnectParallel" else "Connect"](RunService.PostSimulation, function()
 		debug.profilebegin("SwitchNet.Server Outgoing Packets Job")
 
 		--// Per-player stacks
@@ -229,7 +285,15 @@ function Server.new(Name: string): Server
 				})
 			end
 
+			if self._parallel then
+				task.synchronize()
+			end
+
 			Remote:FireClient(Player, NetworkPackets)
+
+			if self._parallel then
+				task.desynchronize()
+			end
 		end
 
 		table.clear(_playerSendStack)
@@ -250,7 +314,15 @@ function Server.new(Name: string): Server
 				})
 			end
 
+			if self._parallel then
+				task.synchronize()
+			end
+
 			UnreliableRemote:FireClient(Player, NetworkPackets)
+
+			if self._parallel then
+				task.desynchronize()
+			end
 		end
 
 		table.clear(_playerSendStackUnr)
@@ -270,7 +342,15 @@ function Server.new(Name: string): Server
 
 			table.clear(_globalSendStack)
 
+			if self._parallel then
+				task.synchronize()
+			end
+
 			Remote:FireAllClients(NetworkPackets)
+
+			if self._parallel then
+				task.desynchronize()
+			end
 		end
 
 		if #_globalSendStackUnr > 0 then
@@ -287,7 +367,15 @@ function Server.new(Name: string): Server
 
 			table.clear(_globalSendStackUnr)
 
+			if self._parallel then
+				task.synchronize()
+			end
+
 			UnreliableRemote:FireAllClients(NetworkPackets)
+
+			if self._parallel then
+				task.desynchronize()
+			end
 		end
 
 		debug.profileend()
@@ -298,10 +386,18 @@ function Server.new(Name: string): Server
 			return nil
 		end
 
+		if self._parallel then
+			task.desynchronize()
+		end
+
 		local Results: Bitstream.NBasedArray
 
 		if IncomingData then
 			if not VerifyNetworkPacketIntegrity(IncomingData) then
+				if self._parallel then
+					task.synchronize()
+				end
+
 				return nil
 			end
 
@@ -322,10 +418,18 @@ function Server.new(Name: string): Server
 		end
 
 		if not Results or Results.n == 0 then
+			if self._parallel then
+				task.synchronize()
+			end
+
 			return nil
 		end
 
 		local Success: boolean, Buffer: buffer, References: Bitstream.NBasedArray = pcall(Create, Results, GetSizeOfValues(Results))
+
+		if self._parallel then
+			task.synchronize()
+		end
 
 		if not Success then
 			return nil
@@ -410,6 +514,10 @@ function Server.SetOnInvoke(self: Server, Function: (Player, ...any) -> ...any)
 end
 
 function Server.FireClient(self: Server, Player: Player, ...: any)
+	if self._parallel then
+		task.desynchronize()
+	end
+
 	local Data: Bitstream.NBasedArray = table.pack(...)
 
 	local SendStack: { [Player]: { SendPacket } } = self._playerSendStack
@@ -424,9 +532,17 @@ function Server.FireClient(self: Server, Player: Player, ...: any)
 		Size = GetSizeOfValues(Data),
 		Data = Data,
 	})
+
+	if self._parallel then
+		task.synchronize()
+	end
 end
 
 function Server.FireClientUnreliable(self: Server, Player: Player, ...: any)
+	if self._parallel then
+		task.desynchronize()
+	end
+	
 	local Data: Bitstream.NBasedArray = table.pack(...)
 
 	local SendStack: { [Player]: { SendPacket } } = self._playerSendStackUnr
@@ -441,27 +557,51 @@ function Server.FireClientUnreliable(self: Server, Player: Player, ...: any)
 		Size = GetSizeOfValues(Data),
 		Data = Data,
 	})
+
+	if self._parallel then
+		task.synchronize()
+	end
 end
 
 function Server.FireAllClients(self: Server, ...: any)
+	if self._parallel then
+		task.desynchronize()
+	end
+
 	local Data: Bitstream.NBasedArray = table.pack(...)
 
 	table.insert(self._globalSendStack, {
 		Size = GetSizeOfValues(Data),
 		Data = Data,
 	})
+
+	if self._parallel then
+		task.synchronize()
+	end
 end
 
 function Server.FireAllClientsUnreliable(self: Server, ...: any)
+	if self._parallel then
+		task.desynchronize()
+	end
+
 	local Data: Bitstream.NBasedArray = table.pack(...)
 
 	table.insert(self._globalSendStackUnr, {
 		Size = GetSizeOfValues(Data),
 		Data = Data,
 	})
+
+	if self._parallel then
+		task.synchronize()
+	end
 end
 
 function Server.InvokeClient(self: Server, Player: Player, ...: any): ...any
+	if self._parallel then
+		task.desynchronize()
+	end
+
 	local SendData: Bitstream.NBasedArray = table.pack(...)
 	local BufferSize: number = GetSizeOfValues(SendData)
 
@@ -469,6 +609,10 @@ function Server.InvokeClient(self: Server, Player: Player, ...: any): ...any
 	local ResponsePacket: NetworkPacket
 
 	local Success: boolean, Error: string? = pcall(function()
+		if self._parallel then
+			task.synchronize()
+		end
+
 		ResponsePacket = self._remoteFunction:InvokeClient(Player, {
 			Data = Data,
 			References = References,
@@ -476,8 +620,12 @@ function Server.InvokeClient(self: Server, Player: Player, ...: any): ...any
 		})
 	end)
 
+	if self._parallel then
+		task.desynchronize()
+	end
+
 	if not Success then
-		warn(`InvokeServer failed! Error:\n{Error}`)
+		TestService:Error(`SwitchNet.Server '{self.Name}' InvokeClient failed! Error:\n{Error}`)
 		return nil
 	end
 
@@ -493,6 +641,10 @@ function Server.InvokeClient(self: Server, Player: Player, ...: any): ...any
 	RealReferences.n = #RealReferences
 
 	local Response: Bitstream.NBasedArray = Read(ResponsePacket.Data, RealReferences)
+
+	if self._parallel then
+		task.synchronize()
+	end
 
 	return table.unpack(Response, 1, Response.n)
 end

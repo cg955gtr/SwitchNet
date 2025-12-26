@@ -36,6 +36,8 @@ export type SendPacket = {
 export type Client = {
 	Name: string,
 
+	_parallel: boolean,
+
 	_onClientInvokeCallback: ((...any) -> ...any)?,
 
 	_onClientEventCallbacks: { [string]: (...any) -> () },
@@ -62,16 +64,45 @@ local function VerifyNetworkPacketIntegrity(Packet: NetworkPacket): boolean
 	return type(Packet) == "table" and type(Packet.Data) == "buffer" and type(Packet.References) == "table"
 end
 
+local function GetCallingScript(): Instance?
+	local Src: string = debug.info(3, "s")
+
+	if Src == "" then
+		return nil
+	end
+
+	local Current: Instance? = game
+
+	for _, Name in string.split(Src, ".") do
+		Current = (Current :: Instance):FindFirstChild(Name)
+		if not Current then
+			return nil
+		end
+	end
+
+	if Current == game then
+		return nil
+	end
+
+	return Current
+end
+
 --// @module Client
 
 local Client = {}
 
 function Client.new(Name: string): Client
 	assert(ACTIVE_REMOTES[Name] == nil, `remote bridge '{Name}' already exists!`)
+	assert(RunService:IsClient(), "This is a client-only function!")
+
 	ACTIVE_REMOTES[Name] = true
+
+	local CallingScript = GetCallingScript()
 
 	local self = {
 		Name = Name,
+
+		_parallel = if CallingScript then CallingScript:FindFirstAncestorOfClass("Actor") ~= nil else false,
 
 		_onClientEventCallbacks = {} :: { [string]: (...any) -> () },
 		_onClientEventCallbacksUnr = {} :: { [string]: (...any) -> () },
@@ -99,6 +130,10 @@ function Client.new(Name: string): Client
 
 		if not next(OnClientEventCallbacks) and not next(WaitingThreads) then
 			return
+		end
+
+		if self._parallel then
+			task.desynchronize()
 		end
 
 		debug.profilebegin("SwitchNet.Client Incoming Packets Job")
@@ -136,6 +171,10 @@ function Client.new(Name: string): Client
 		end
 
 		debug.profileend()
+
+		if self._parallel then
+			task.synchronize()
+		end
 	end)
 
 	self._onUnrClientEvent = self._unrRemoteEvent.OnClientEvent:Connect(function(IncomingData: { NetworkPacket })
@@ -148,6 +187,10 @@ function Client.new(Name: string): Client
 
 		if not next(OnClientEventCallbacks) and not next(WaitingThreads) then
 			return
+		end
+
+		if self._parallel then
+			task.desynchronize()
 		end
 
 		debug.profilebegin("SwitchNet.Client Incoming Packets Job (Unreliable)")
@@ -185,6 +228,10 @@ function Client.new(Name: string): Client
 		end
 
 		debug.profileend()
+
+		if self._parallel then
+			task.synchronize()
+		end
 	end)
 
 	local Remote: RemoteEvent = self._remoteEvent
@@ -193,7 +240,7 @@ function Client.new(Name: string): Client
 	local _sendStack: { SendPacket } = self._sendStack
 	local _sendStackUnr: { SendPacket } = self._sendStackUnr
 
-	self._replicationHandler = RunService.PostSimulation:Connect(function()
+	self._replicationHandler = RunService.PostSimulation[if self._parallel then "ConnectParallel" else "Connect"](RunService.PostSimulation, function()
 		debug.profilebegin("SwitchNet.Client Outgoing Packets Job")
 
 		if #_sendStack > 0 then
@@ -209,8 +256,16 @@ function Client.new(Name: string): Client
 			end
 
 			table.clear(_sendStack)
+
+			if self._parallel then
+				task.synchronize()
+			end
 	
 			Remote:FireServer(NetworkPackets)
+
+			if self._parallel then
+				task.desynchronize()
+			end
 		end
 
 		if #_sendStackUnr > 0 then
@@ -226,8 +281,16 @@ function Client.new(Name: string): Client
 			end
 
 			table.clear(_sendStackUnr)
+
+			if self._parallel then
+				task.desynchronize()
+			end
 	
 			UnreliableRemote:FireServer(NetworkPackets)
+
+			if self._parallel then
+				task.synchronize()
+			end
 		end
 
 		debug.profileend()
@@ -238,10 +301,18 @@ function Client.new(Name: string): Client
 			return nil
 		end
 
+		if self._parallel then
+			task.desynchronize()
+		end
+
 		local Results: Bitstream.NBasedArray
 
 		if IncomingData then
 			if not VerifyNetworkPacketIntegrity(IncomingData) then
+				if self._parallel then
+					task.synchronize()
+				end
+
 				return
 			end
 
@@ -260,10 +331,18 @@ function Client.new(Name: string): Client
 		end
 
 		if not Results or Results.n == 0 then
+			if self._parallel then
+				task.synchronize()
+			end
+
 			return nil
 		end
 
 		local Success: boolean, Buffer: buffer, References: Bitstream.NBasedArray = pcall(Create, Results, GetSizeOfValues(Results))
+
+		if self._parallel then
+			task.synchronize()
+		end
 
 		if not Success then
 			return nil
@@ -329,24 +408,44 @@ function Client.SetOnInvoke(self: Client, Function: (...any) -> ...any)
 end
 
 function Client.FireServer(self: Client, ...: any)
+	if self._parallel then
+		task.desynchronize()
+	end
+
 	local Data: Bitstream.NBasedArray = table.pack(...)
 
 	table.insert(self._sendStack, {
 		Size = GetSizeOfValues(Data),
 		Data = Data,
 	})
+
+	if self._parallel then
+		task.synchronize()
+	end
 end
 
 function Client.FireServerUnreliable(self: Client, ...: any)
+	if self._parallel then
+		task.desynchronize()
+	end
+
 	local Data: Bitstream.NBasedArray = table.pack(...)
 
 	table.insert(self._sendStackUnr, {
 		Size = GetSizeOfValues(Data),
 		Data = Data,
 	})
+
+	if self._parallel then
+		task.synchronize()
+	end
 end
 
 function Client.InvokeServer(self: Client, ...: any): ...any
+	if self._parallel then
+		task.desynchronize()
+	end
+
 	local SendData: Bitstream.NBasedArray = table.pack(...)
 	local BufferSize: number = GetSizeOfValues(SendData)
 
@@ -354,6 +453,10 @@ function Client.InvokeServer(self: Client, ...: any): ...any
 	local ResponsePacket: NetworkPacket
 
 	local Success: boolean, Error: string? = pcall(function()
+		if self._parallel then
+			task.synchronize()
+		end
+
 		ResponsePacket = self._remoteFunction:InvokeServer({
 			Data = Data,
 			References = References,
@@ -361,8 +464,12 @@ function Client.InvokeServer(self: Client, ...: any): ...any
 		})
 	end)
 
+	if self._parallel then
+		task.desynchronize()
+	end
+
 	if not Success then
-		warn(`InvokeServer failed! Error:\n{Error}`)
+		TestService:Error(`SwitchNet.Client '{self.Name}' InvokeServer failed! Error:\n{Error}`)
 		return nil
 	end
 
@@ -378,6 +485,10 @@ function Client.InvokeServer(self: Client, ...: any): ...any
 	RealReferences.n = #RealReferences
 
 	local Response: Bitstream.NBasedArray = Read(ResponsePacket.Data, RealReferences)
+
+	if self._parallel then
+		task.synchronize()
+	end
 
 	return table.unpack(Response, 1, Response.n)
 end
