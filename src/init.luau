@@ -38,9 +38,11 @@ SOFTWARE.
 --!optimize 2
 
 local START_TIME: number = os.clock()
-local VERSION: string = "v1.1.0"
+local VERSION: string = "v1.1.1"
 
 --// Dependencies
+
+local TestService = game:GetService("TestService")
 
 local Server = require("@self/Server")
 local Client = require("@self/Client")
@@ -57,6 +59,6 @@ local SwitchNet = {
 
 local LOADING_TIME: number = os.clock() - START_TIME
 
-task.spawn(warn, `SwitchNet - {VERSION} Loaded in {LOADING_TIME}! Created by 8ch99.`)
+TestService:Message(`SwitchNet - {VERSION} Loaded in {LOADING_TIME}! Created by 8ch99.`)
 
 return SwitchNet
