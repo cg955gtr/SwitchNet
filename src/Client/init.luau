@@ -358,6 +358,8 @@ function Client.new(Name: string): Client
 end
 
 function Client.Destroy(self: Client)
+	ACTIVE_REMOTES[self.Name] = nil
+	
 	self._replicationHandler:Disconnect()
 	self._onUnrClientEvent:Disconnect()
 	self._onClientEvent:Disconnect()

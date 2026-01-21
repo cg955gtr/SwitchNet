@@ -89,6 +89,19 @@ local function GetCallingScript(): Instance?
 	return Current
 end
 
+local function DeepClone(Table: { [any]: any }): { [any]: any }
+	local Copy: { [any]: any } = {}
+
+	for Index: any, Value: any in Table do
+		if type(Value) == "table" then
+			Value = DeepClone(Value)
+		end
+		Copy[Index] = Value
+	end
+
+	return Copy
+end
+
 --// @module Server
 
 local Server = {}
@@ -445,6 +458,8 @@ function Server.new(Name: string): Server
 end
 
 function Server.Destroy(self: Server)
+	ACTIVE_REMOTES[self.Name] = nil
+	
 	self._replicationHandler:Disconnect()
 	self._onUnrServerEvent:Disconnect()
 	self._onServerEvent:Disconnect()

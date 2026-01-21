@@ -46,7 +46,7 @@ return {
 			local TableSize: number = #Array
 			Size += GetSizeOfValues(Array, TableSize)
 
-			table.clear(Array)
+			--table.clear(Array)
 			Array = nil :: never
 		else
 			local TableSize: number = Value.n or #Value
