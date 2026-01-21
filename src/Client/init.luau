@@ -10,6 +10,7 @@
 --!optimize 2
 
 local ACTIVE_REMOTES = {}
+local USE_DEEP_COPY: boolean = true
 
 --// Dependencies
 
@@ -87,6 +88,19 @@ local function GetCallingScript(): Instance?
 	return Current
 end
 
+local function DeepClone(Table: { [any]: any }): { [any]: any }
+	local Copy: { [any]: any } = {}
+
+	for Index: any, Value: any in Table do
+		if type(Value) == "table" then
+			Value = DeepClone(Value)
+		end
+		Copy[Index] = Value
+	end
+
+	return Copy
+end
+
 --// @module Client
 
 local Client = {}
@@ -120,19 +134,62 @@ function Client.new(Name: string): Client
 	self._unrRemoteEvent = self._remoteContainer:WaitForChild("Unreliable") :: UnreliableRemoteEvent
 	self._remoteFunction = self._remoteContainer:WaitForChild("Function") :: RemoteFunction
 
+	local Remote: RemoteEvent = self._remoteEvent
+	local UnreliableRemote: UnreliableRemoteEvent = self._unrRemoteEvent
+
+	local _sendStack: { SendPacket } = self._sendStack
+	local _sendStackUnr: { SendPacket } = self._sendStackUnr
+
+	local OnClientEventCallbacks: { [string]: (Player, ...any) -> () } = self._onClientEventCallbacks
+	local OnClientEventCallbacksUnr: { [string]: (Player, ...any) -> () } = self._onClientEventCallbacksUnr
+	local WaitingThreads: { [thread]: boolean } = self._waitingThreads
+	local WaitingThreadsUnr: { [thread]: boolean } = self._waitingThreadsUnr
+
+	local IsParallel: boolean = self._parallel
+
+	--// Internal functions for firing callbacks without using unpack() too many times
+	local function _fireCallbacks(...: any)
+		for Thread: thread in WaitingThreads do
+			pcall(task.spawn, Thread, ...)
+		end
+
+		table.clear(WaitingThreads)
+
+		for Name: string, Function: (Player, ...any) -> () in OnClientEventCallbacks do
+			local Success: boolean, Error: any = pcall(task.spawn, Function, ...)
+
+			if not Success then
+				TestService:Error(`SwitchNet.Client '{self.Name}' Callback '{Name}' Error:\n{Error}`)
+			end
+		end
+	end
+
+	local function _fireCallbacksUnr(...: any)
+		for Thread: thread in WaitingThreadsUnr do
+			pcall(task.spawn, Thread, ...)
+		end
+
+		table.clear(WaitingThreadsUnr)
+
+		for Name: string, Function: (Player, ...any) -> () in OnClientEventCallbacksUnr do
+			local Success: boolean, Error: any = pcall(task.spawn, Function, ...)
+
+			if not Success then
+				TestService:Error(`SwitchNet.Client '{self.Name}' (UNRELIABLE) Callback '{Name}' Error:\n{Error}`)
+			end
+		end
+	end
+
 	self._onClientEvent = self._remoteEvent.OnClientEvent:Connect(function(IncomingData: { NetworkPacket })
 		if type(IncomingData) ~= "table" then
 			return
 		end
 
-		local OnClientEventCallbacks: { [string]: (Player, ...any) -> () } = self._onClientEventCallbacks
-		local WaitingThreads: { [thread]: boolean } = self._waitingThreads
-
 		if not next(OnClientEventCallbacks) and not next(WaitingThreads) then
 			return
 		end
 
-		if self._parallel then
+		if IsParallel then
 			task.desynchronize()
 		end
 
@@ -150,29 +207,12 @@ function Client.new(Name: string): Client
 			RealReferences.n = #RealReferences
 			
 			local Args: Bitstream.NBasedArray = Read(Data, RealReferences)
-			local Amount: number = Args.n
-
-			--// Free waiting threads
-			for Thread: thread in WaitingThreads do
-				pcall(task.spawn, Thread, table.unpack(Args, 1, Amount))
-			end
-
-			table.clear(WaitingThreads)
-			
-			--// Fire callbacks
-			for Name: string, Function: (Player, ...any) -> () in OnClientEventCallbacks do
-				--// TODO: Use xpcall instead to fetch error tracebacks
-				local Success: boolean, Error: any = pcall(task.spawn, Function, table.unpack(Args, 1, Amount))
-
-				if not Success then
-					TestService:Error(`SwitchNet.Client '{self.Name}' Callback Error:\n{Error}`)
-				end
-			end
+			_fireCallbacks(table.unpack(Args, 1, Args.n))
 		end
 
 		debug.profileend()
 
-		if self._parallel then
+		if IsParallel then
 			task.synchronize()
 		end
 	end)
@@ -182,14 +222,11 @@ function Client.new(Name: string): Client
 			return
 		end
 
-		local OnClientEventCallbacks: { [string]: (Player, ...any) -> () } = self._onClientEventCallbacksUnr
-		local WaitingThreads: { [thread]: boolean } = self._waitingThreadsUnr
-
-		if not next(OnClientEventCallbacks) and not next(WaitingThreads) then
+		if not next(OnClientEventCallbacksUnr) and not next(WaitingThreadsUnr) then
 			return
 		end
 
-		if self._parallel then
+		if IsParallel then
 			task.desynchronize()
 		end
 
@@ -207,38 +244,15 @@ function Client.new(Name: string): Client
 			RealReferences.n = #RealReferences
 			
 			local Args: Bitstream.NBasedArray = Read(Data, RealReferences)
-			local Amount: number = Args.n
-
-			--// Free waiting threads
-			for Thread: thread in WaitingThreads do
-				pcall(task.spawn, Thread, table.unpack(Args, 1, Amount))
-			end
-
-			table.clear(WaitingThreads)
-			
-			--// Fire callbacks
-			for Name: string, Function: (Player, ...any) -> () in OnClientEventCallbacks do
-				--// TODO: Use xpcall instead to fetch error tracebacks
-				local Success: boolean, Error: any = pcall(task.spawn, Function, table.unpack(Args, 1, Amount))
-
-				if not Success then
-					TestService:Error(`SwitchNet.Client '{self.Name}' (UNRELIABLE) Callback Error:\n{Error}`)
-				end
-			end
+			_fireCallbacksUnr(table.unpack(Args, 1, Args.n))
 		end
 
 		debug.profileend()
 
-		if self._parallel then
+		if IsParallel then
 			task.synchronize()
 		end
 	end)
-
-	local Remote: RemoteEvent = self._remoteEvent
-	local UnreliableRemote: UnreliableRemoteEvent = self._unrRemoteEvent
-
-	local _sendStack: { SendPacket } = self._sendStack
-	local _sendStackUnr: { SendPacket } = self._sendStackUnr
 
 	self._replicationHandler = RunService.PostSimulation[if self._parallel then "ConnectParallel" else "Connect"](RunService.PostSimulation, function()
 		debug.profilebegin("SwitchNet.Client Outgoing Packets Job")
@@ -257,13 +271,13 @@ function Client.new(Name: string): Client
 
 			table.clear(_sendStack)
 
-			if self._parallel then
+			if IsParallel then
 				task.synchronize()
 			end
 	
 			Remote:FireServer(NetworkPackets)
 
-			if self._parallel then
+			if IsParallel then
 				task.desynchronize()
 			end
 		end
@@ -282,13 +296,13 @@ function Client.new(Name: string): Client
 
 			table.clear(_sendStackUnr)
 
-			if self._parallel then
+			if IsParallel then
 				task.desynchronize()
 			end
 	
 			UnreliableRemote:FireServer(NetworkPackets)
 
-			if self._parallel then
+			if IsParallel then
 				task.synchronize()
 			end
 		end
@@ -301,7 +315,7 @@ function Client.new(Name: string): Client
 			return nil
 		end
 
-		if self._parallel then
+		if IsParallel then
 			task.desynchronize()
 		end
 
@@ -309,7 +323,7 @@ function Client.new(Name: string): Client
 
 		if IncomingData then
 			if not VerifyNetworkPacketIntegrity(IncomingData) then
-				if self._parallel then
+				if IsParallel then
 					task.synchronize()
 				end
 
@@ -331,7 +345,7 @@ function Client.new(Name: string): Client
 		end
 
 		if not Results or Results.n == 0 then
-			if self._parallel then
+			if IsParallel then
 				task.synchronize()
 			end
 
@@ -340,7 +354,7 @@ function Client.new(Name: string): Client
 
 		local Success: boolean, Buffer: buffer, References: Bitstream.NBasedArray = pcall(Create, Results, GetSizeOfValues(Results))
 
-		if self._parallel then
+		if IsParallel then
 			task.synchronize()
 		end
 
@@ -418,7 +432,7 @@ function Client.FireServer(self: Client, ...: any)
 
 	table.insert(self._sendStack, {
 		Size = GetSizeOfValues(Data),
-		Data = Data,
+		Data = if USE_DEEP_COPY then DeepClone(Data) else Data,
 	})
 
 	if self._parallel then
@@ -435,7 +449,7 @@ function Client.FireServerUnreliable(self: Client, ...: any)
 
 	table.insert(self._sendStackUnr, {
 		Size = GetSizeOfValues(Data),
-		Data = Data,
+		Data = if USE_DEEP_COPY then DeepClone(Data) else Data,
 	})
 
 	if self._parallel then

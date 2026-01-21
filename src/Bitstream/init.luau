@@ -36,10 +36,14 @@ local TypesFromValue = {} :: { StreamType }
 Bitstream.Types = Types
 Bitstream.TypesFromValue = TypesFromValue
 
-local function GetValueSizeOnly(Value: any): number
-	local Size: number = 1
+local function GetSizeOfValues(Data: NBasedArray, Length: number?): number
+	local Size: number = 0
 
-	if Value ~= nil then
+	for i: number = 1, Length or Data.n or #Data do
+		Size += 1
+		local Value: any? = Data[i]
+		if Value == nil then continue end
+
 		local Type: StreamType? = Types[type(Value)] or Types[typeof(Value)]
 
 		if Type then
@@ -49,8 +53,7 @@ local function GetValueSizeOnly(Value: any): number
 			if _size then
 				Size += _size
 			else
-				local GetSize = Type.GetSize
-
+				local GetSize: ((any) -> number)? = Type.GetSize
 				if GetSize then
 					Size += GetSize(Value)
 				end
@@ -64,40 +67,6 @@ local function GetValueSizeOnly(Value: any): number
 	return Size
 end
 
-local function GetSizeOfValues(Data: NBasedArray, Length: number?): number
-	local Size: number = 0
-
-	for i: number = 1, Length or Data.n or #Data do
-		Size += 1
-		local Value: any? = Data[i]
-
-		if Value ~= nil then
-			local Type: StreamType? = Types[type(Value)] or Types[typeof(Value)]
-
-			if Type then
-				--// OTHER
-				local _size: number? = Type.Size
-
-				if _size then
-					Size += _size
-				else
-					local GetSize = Type.GetSize
-
-					if GetSize then
-						Size += GetSize(Value)
-					end
-				end
-			else
-				--// REFERENCE
-				Size += 2
-			end
-		end
-	end
-
-	return Size
-end
-
-Bitstream._getValueSizeOnly = GetValueSizeOnly
 Bitstream._getSizeOfValues = GetSizeOfValues
 
 function Bitstream.Read(Buffer: buffer, References: NBasedArray): { n: number, [number]: any }
