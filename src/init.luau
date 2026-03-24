@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: SwitchNet.luau
 	Date written: 15th November 2025
-	Last edited: 25th December 2025
+	Last edited: 23rd March 2026
 
 	A blazingly fast and easy to use networking module for reducing bandwidth and overhead across remotes.
 ]==]
@@ -33,32 +33,54 @@ SOFTWARE.
 
 ]==]
 
+--// TODO: Move some variables to `const` when its rolled out
+
 --!strict
 --!native
 --!optimize 2
 
-local START_TIME: number = os.clock()
-local VERSION: string = "v1.1.3"
+local VERSION = "v1.1.4"
+
+--// Services
+
+local LogService = game:GetService("LogService")
+local RunService = game:GetService("RunService")
+local TestService = game:GetService("TestService")
 
 --// Dependencies
 
-local TestService = game:GetService("TestService")
-
 local Server = require("@self/Server")
 local Client = require("@self/Client")
+
+--// Typedefs
 
 export type Server = Server.Server
 export type Client = Client.Client
 
 --// @module SwitchNet
 
-local SwitchNet = {
+local SwitchNet = table.freeze({
 	Server = Server,
 	Client = Client,
-}
+})
 
-local LOADING_TIME: number = os.clock() - START_TIME
 
-TestService:Message(`SwitchNet - {VERSION} Loaded in {LOADING_TIME}! Created by 8ch99.`)
+task.spawn(function()
+	--// Print message
+	--// Check if it exists already too, so if theres several dependencies, it won't add extras
+	local runContext = if RunService:IsClient() then "Client" else "Server"
+	local message = `SwitchNet {runContext} - {VERSION} loaded successfully! Created by 8ch99.`
+	local patternSanitizedMessage = string.gsub(message, "([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+	
+	for _, log in LogService:GetLogHistory() do
+		if log.messageType == Enum.MessageType.MessageInfo and string.match(log.message, patternSanitizedMessage) then
+			--// Message was sent already, cancel!
+			return
+		end
+	end
+	
+	TestService:Message(message)
+end)
+
 
 return SwitchNet
