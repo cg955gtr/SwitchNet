@@ -12,11 +12,11 @@
 return {
 	Size = 8,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (number, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (number, number)
 		return buffer.readf64(Buffer, Pointer), 8
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: number): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: number): number
 		buffer.writef64(Buffer, Pointer, Value)
 		return 8
 	end,

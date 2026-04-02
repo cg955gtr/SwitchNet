@@ -12,7 +12,7 @@
 return {
 	Size = 15,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (TweenInfo, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (TweenInfo, number)
 		local Time: number = buffer.readf32(Buffer, Pointer)
 
 		local EasingStyleValue: number = buffer.readu8(Buffer, Pointer + 4)
@@ -30,7 +30,7 @@ return {
 		return TweenInfo.new(Time, EasingStyle, EasingDirection, RepeatCount, Reverses, DelayTime), 15
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: TweenInfo): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: TweenInfo): number
 		buffer.writef32(Buffer, Pointer, Value.Time)
 
 		buffer.writeu8(Buffer, Pointer + 4, Value.EasingStyle.Value)

@@ -11,9 +11,9 @@
 
 --// Dependencies
 
-local HEADER: string = "\16\26"
-local HEADER_SIZE: number = #HEADER
-local BUFFER_SIZE_LIMIT: number = 2 ^ 21
+local HEADER = "\16\26"
+local HEADER_SIZE = #HEADER
+local BUFFER_SIZE_LIMIT = 2 ^ 21
 
 export type NBasedArray = { n: number, [number]: any }
 
@@ -23,8 +23,8 @@ export type StreamType = {
 	Size: number?,
 	GetSize: ((Value: any) -> number)?,
 
-	Reader: (Buffer: buffer, References: NBasedArray, Pointer: number) -> (any, number),
-	Writer: (Buffer: buffer, References: NBasedArray, Pointer: number, Value: any) -> number,
+	Reader: (Buffer: buffer, References: { any }, Pointer: number) -> (any, number),
+	Writer: (Buffer: buffer, References: { any }, Pointer: number, Value: any) -> number,
 }
 
 --// @module Bitstream
@@ -71,7 +71,7 @@ end
 
 
 
-function Bitstream.Read(buff: buffer, references: NBasedArray): NBasedArray
+function Bitstream.Read(buff: buffer, references: { any }): NBasedArray
 	--// TODO: Add some extra checks probably? It might be good enough for now
 	--// Remote typechecks are done seperately already
 	
@@ -115,19 +115,19 @@ function Bitstream.Read(buff: buffer, references: NBasedArray): NBasedArray
 		streamed[i] = Value
 	end
 
-	return streamed :: NBasedArray
+	return streamed
 end
 
 
 
-function Bitstream.Create(data: NBasedArray, bufferSize: number): (buffer, NBasedArray)
+function Bitstream.Create(data: NBasedArray, bufferSize: number): (buffer, { any })
 	bufferSize += HEADER_SIZE + 2
 
 	local dataCount = data.n
 
 	--// Create the buffer!
 	local buff = buffer.create(bufferSize)
-	local references = { n = 0 }
+	local references = {}
 	local pointer = HEADER_SIZE + 2
 
 	--// Write header
@@ -151,9 +151,7 @@ function Bitstream.Create(data: NBasedArray, bufferSize: number): (buffer, NBase
 			local pointerOffset = streamType.Writer(buff, references, pointer, value)
 			pointer += pointerOffset
 		else
-			local newCount = references.n + 1
-			references.n = newCount
-
+			local newCount = #references + 1
 			buffer.writeu8(buff, pointer, 255)
 			buffer.writeu16(buff, pointer + 1, newCount)
 

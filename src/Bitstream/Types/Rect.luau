@@ -12,7 +12,7 @@
 return {
 	Size = 16,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (Rect, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (Rect, number)
 		return Rect.new(
 			Vector2.new(
 				buffer.readf32(Buffer, Pointer),
@@ -25,7 +25,7 @@ return {
 		), 16
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: Rect): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: Rect): number
 		local Min: Vector2 = Value.Min
 		local Max: Vector2 = Value.Max
 

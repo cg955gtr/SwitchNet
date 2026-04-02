@@ -12,7 +12,7 @@
 return {
 	Size = 24,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (Region3, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (Region3, number)
 		return Region3.new(
 			Vector3.new(
 				buffer.readf32(Buffer, Pointer),
@@ -27,7 +27,7 @@ return {
 		), 24
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: Region3): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: Region3): number
 		local Origin: Vector3 = Value.CFrame.Position
 		local Size: Vector3 = Value.Size / 2
 

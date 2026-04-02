@@ -12,7 +12,7 @@
 return {
 	Size = 24,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (Ray, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (Ray, number)
 		return Ray.new(
 			Vector3.new(
 				buffer.readf32(Buffer, Pointer),
@@ -27,7 +27,7 @@ return {
 		), 24
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: Ray): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: Ray): number
 		local Origin: Vector3 = Value.Origin
 		local Direction: Vector3 = Value.Direction
 

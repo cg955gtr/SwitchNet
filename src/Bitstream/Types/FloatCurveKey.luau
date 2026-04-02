@@ -14,7 +14,7 @@ return {
 		return if Value.Interpolation.Value == 2 then 17 else 9
 	end,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (FloatCurveKey, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (FloatCurveKey, number)
 		local Time: number = buffer.readf32(Buffer, Pointer)
 		local Value: number = buffer.readf32(Buffer, Pointer + 4)
 		local Mode: number = buffer.readu8(Buffer, Pointer + 8)
@@ -32,7 +32,7 @@ return {
 		return Key, 9
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: FloatCurveKey): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: FloatCurveKey): number
 		local Mode: number = Value.Interpolation.Value
 		
 		buffer.writef32(Buffer, Pointer, Value.Time)

@@ -12,14 +12,14 @@
 return {
 	Size = 8,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (Vector2, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (Vector2, number)
 		return Vector2.new(
 			buffer.readf32(Buffer, Pointer),
 			buffer.readf32(Buffer, Pointer + 4)
 		), 8
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: Vector2): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: Vector2): number
 		buffer.writef32(Buffer, Pointer, Value.X)
 		buffer.writef32(Buffer, Pointer + 4, Value.Y)
 		return 8

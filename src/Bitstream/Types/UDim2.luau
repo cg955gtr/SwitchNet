@@ -12,7 +12,7 @@
 return {
 	Size = 16,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (UDim2, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (UDim2, number)
 		return UDim2.new(
 			buffer.readf32(Buffer, Pointer),
 			buffer.readi32(Buffer, Pointer + 4),
@@ -21,7 +21,7 @@ return {
 		), 16
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: UDim2): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: UDim2): number
 		local X: UDim, Y: UDim = Value.X, Value.Y
 
 		buffer.writef32(Buffer, Pointer, X.Scale)

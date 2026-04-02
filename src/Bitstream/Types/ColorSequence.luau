@@ -16,7 +16,7 @@ return {
 		return 1 + SIZE_PER_KEYPOINT * #Value.Keypoints
 	end,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (ColorSequence, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (ColorSequence, number)
 		local Keypoints: { ColorSequenceKeypoint } = {}
 		local Size: number = buffer.readu8(Buffer, Pointer)
 
@@ -38,7 +38,7 @@ return {
 		return ColorSequence.new(Keypoints), 1 + SIZE_PER_KEYPOINT * Size
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: ColorSequence): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: ColorSequence): number
 		local Keypoints: { ColorSequenceKeypoint } = Value.Keypoints
 		local Size: number = #Keypoints
 

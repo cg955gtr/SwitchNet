@@ -12,14 +12,14 @@
 return {
 	Size = 8,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (NumberRange, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (NumberRange, number)
 		return NumberRange.new(
 			buffer.readf32(Buffer, Pointer),
 			buffer.readf32(Buffer, Pointer + 4)
 		), 8
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: NumberRange): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: NumberRange): number
 		buffer.writef32(Buffer, Pointer, Value.Min)
 		buffer.writef32(Buffer, Pointer + 4, Value.Max)
 		return 8

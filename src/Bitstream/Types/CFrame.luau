@@ -15,7 +15,7 @@ local WRITE_FULL_MATRIX: boolean = false
 
 local SIZE: number = if WRITE_FULL_MATRIX then 48 else 24
 
-local function NormalReader(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (CFrame, number)
+local function NormalReader(Buffer: buffer, References: { any }, Pointer: number): (CFrame, number)
 	local BaseCFrame: CFrame = CFrame.new(
 		buffer.readf32(Buffer, Pointer),
 		buffer.readf32(Buffer, Pointer + 4),
@@ -31,7 +31,7 @@ local function NormalReader(Buffer: buffer, References: { n: number, [number]: a
 	return BaseCFrame, SIZE
 end
 
-local function FullReader(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (CFrame, number)
+local function FullReader(Buffer: buffer, References: { any }, Pointer: number): (CFrame, number)
 	local Position: Vector3 = Vector3.new(
 		buffer.readf32(Buffer, Pointer),
 		buffer.readf32(Buffer, Pointer + 4),
@@ -60,7 +60,7 @@ local function FullReader(Buffer: buffer, References: { n: number, [number]: any
 end
 
 
-local function NormalWriter(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: CFrame): number
+local function NormalWriter(Buffer: buffer, References: { any }, Pointer: number, Value: CFrame): number
 	buffer.writef32(Buffer, Pointer, Value.X)
 	buffer.writef32(Buffer, Pointer + 4, Value.Y)
 	buffer.writef32(Buffer, Pointer + 8, Value.Z)
@@ -74,7 +74,7 @@ local function NormalWriter(Buffer: buffer, References: { n: number, [number]: a
 	return SIZE
 end
 
-local function FullWriter(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: CFrame): number
+local function FullWriter(Buffer: buffer, References: { any }, Pointer: number, Value: CFrame): number
 	buffer.writef32(Buffer, Pointer, Value.X)
 	buffer.writef32(Buffer, Pointer + 4, Value.Y)
 	buffer.writef32(Buffer, Pointer + 8, Value.Z)

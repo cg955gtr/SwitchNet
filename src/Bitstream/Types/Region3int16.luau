@@ -12,7 +12,7 @@
 return {
 	Size = 12,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (Region3int16, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (Region3int16, number)
 		return Region3int16.new(
 			Vector3int16.new(
 				buffer.readi16(Buffer, Pointer),
@@ -27,7 +27,7 @@ return {
 		), 12
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: Region3int16): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: Region3int16): number
 		local Min: Vector3int16 = Value.Min
 		local Max: Vector3int16 = Value.Max
 

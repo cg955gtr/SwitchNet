@@ -14,7 +14,7 @@ return {
 		return 4 + buffer.len(Value)
 	end,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (buffer, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (buffer, number)
 		local Size: number = buffer.readu32(Buffer, Pointer)
 
 		if Size == 0 then
@@ -26,7 +26,7 @@ return {
 		return buffer.fromstring(String), 4 + Size
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: buffer): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: buffer): number
 		local Size: number = buffer.len(Value)
 
 		buffer.writeu32(Buffer, Pointer, Size)

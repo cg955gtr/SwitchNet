@@ -221,6 +221,34 @@ function Server.FireAllClientsUnreliable(self: Server, ...: any): ()
 Server.FireAllClientsUnreliable(Remote, "Hello everybody from the server! (Unreliable)")
 ```
 
+## Server.FireAllClients
+```luau
+function Server.FireAllClientsExcept(self: Server, exemptPlayer: Player, ...: any): ()
+```
+> Sends the given data to all players over the remote bridge *EXCLUDING* the passed player.`
+### Parameters
+- `self` : `Server` - The SwitchNet server instance.
+- `exemptPlayer` : `Player` - The player who should not receive the data.
+- `...` : `any` - The data to send.
+### Example
+```luau
+Server.FireAllClientsExcept(Remote, game.Players['8ch99'], "Hello everybody (excluding 8ch99) from the server!")
+```
+
+## Server.FireAllClientsUnreliableExcept
+```luau
+function Server.FireAllClientsUnreliableExcept(self: Server, exemptPlayer: Player, ...: any): ()
+```
+> Sends the given data to all players over the remote bridge via. UnreliableRemoteEvent *EXCLUDING* the passed player.`
+### Parameters
+- `self` : `Server` - The SwitchNet server instance.
+- `exemptPlayer` : `Player` - The player who should not receive the data.
+- `...` : `any` - The data to send.
+### Example
+```luau
+Server.FireAllClientsUnreliableExcept(Remote, game.Players['8ch99'], "Hello everybody (excluding 8ch99) from the server! (Unreliable)")
+```
+
 ## Server.InvokeClient
 ```luau
 function Server.InvokeClient(self: Server, Player: Player, ...: any): ...any

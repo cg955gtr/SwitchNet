@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: Client.luau
 	Date written: 15th November 2025
-	Last edited: 23rd March 2026
+	Last edited: 2nd April 2026
 ]==]
 
 --!strict
@@ -10,7 +10,6 @@
 --!optimize 2
 
 local ACTIVE_REMOTES = {}
-local USE_DEEP_COPY = true
 
 --// Services
 
@@ -26,51 +25,21 @@ local Create = Bitstream.Create
 local Read = Bitstream.Read
 local GetSizeOfValues = Bitstream._getSizeOfValues
 
-local function DeepClone(t: { [any]: any }): { [any]: any }
-	local clone = {}
-	for index, value in t do
-		clone[index] = if type(value) == "table" then DeepClone(value) else value
-	end
-	return clone
-end
-
 local function VerifyNetworkPacketIntegrity(packet: NetworkPacket): boolean
 	return packet and type(packet) == "table" and type(packet.Data) == "buffer" and type(packet.References) == "table"
 end
 
-local function GetCallingScript(): Instance?
-	local source = debug.info(3, "s")
-	if source == "" then return nil end
-
-	local current: Instance? = game
-	for _, name in string.split(source, ".") do
-		current = (current :: Instance):FindFirstChild(name)
-		if not current then
-			return nil
-		end
-	end
-
-	if current == game then return end
-
-	return current
-end
-
 --// Typedefs
 
-export type NetworkPacket = {
+type NBasedArray = Bitstream.NBasedArray
+
+type NetworkPacket = {
 	Data: buffer,
 	References: { any },
 }
 
-export type SendPacket = {
-	Size: number,
-	Data: Bitstream.NBasedArray,
-}
-
 export type Client = {
 	Name: string,
-
-	_parallel: boolean,
 
 	_onClientInvokeCallback: ((...any) -> ...any)?,
 
@@ -80,8 +49,8 @@ export type Client = {
 	_waitingThreads: { [thread]: boolean },
 	_waitingThreadsUnr: { [thread]: boolean },
 
-	_sendStack: { SendPacket },
-	_sendStackUnr: { SendPacket },
+	_sendStack: { NetworkPacket },
+	_sendStackUnr: { NetworkPacket },
 
 	_remoteContainer: Folder,
 	
@@ -98,37 +67,33 @@ export type Client = {
 
 local Client = {}
 
-function Client.new(Name: string): Client
-	assert(ACTIVE_REMOTES[Name] == nil, `Remote bridge '{Name}' already exists!`)
+function Client.new(name: string): Client
+	assert(ACTIVE_REMOTES[name] == nil, `Remote bridge '{name}' already exists!`)
 	assert(RunService:IsClient(), "This is a client-only function!")
 
 	--// Verify its a actual remote bridge
-	local remoteContainer = ReplicatedStorage:WaitForChild(Name)
-	assert(remoteContainer and remoteContainer:IsA("Folder"), `Remote bridge '{Name}' is invalid! Container is not a folder/does not exist.`)
+	local remoteContainer = ReplicatedStorage:WaitForChild(name)
+	assert(remoteContainer and remoteContainer:IsA("Folder"), `Remote bridge '{name}' is invalid! Container is not a folder/does not exist.`)
 	
 	local remote = remoteContainer:WaitForChild("Reliable") :: RemoteEvent
 	local unreliableRemote = remoteContainer:WaitForChild("Unreliable") :: UnreliableRemoteEvent
 	local remoteFunction = remoteContainer:WaitForChild("Function") :: RemoteFunction
 
-	assert(remote and remote:IsA("RemoteEvent"), `Remote bridge '{Name}' is invalid! RemoteEvent is not a RemoteEvent/does not exist.`)
-	assert(unreliableRemote and unreliableRemote:IsA("UnreliableRemoteEvent"), `Remote bridge '{Name}' is invalid! UnreliableRemoteEvent is not a UnreliableRemoteEvent/does not exist.`)
-	assert(remoteFunction and remoteFunction:IsA("RemoteFunction"), `Remote bridge '{Name}' is invalid! RemoteFunction is not a RemoteFunction/does not exist.`)
+	assert(remote and remote:IsA("RemoteEvent"), `Remote bridge '{name}' is invalid! RemoteEvent is not a RemoteEvent/does not exist.`)
+	assert(unreliableRemote and unreliableRemote:IsA("UnreliableRemoteEvent"), `Remote bridge '{name}' is invalid! UnreliableRemoteEvent is not a UnreliableRemoteEvent/does not exist.`)
+	assert(remoteFunction and remoteFunction:IsA("RemoteFunction"), `Remote bridge '{name}' is invalid! RemoteFunction is not a RemoteFunction/does not exist.`)
 
-	ACTIVE_REMOTES[Name] = true
+	ACTIVE_REMOTES[name] = true
 
-	local callingScript = GetCallingScript()
-	local hasActor = if callingScript then callingScript:FindFirstAncestorOfClass("Actor") ~= nil else false
 
 	local self = {
-		Name = Name,
-
-		_parallel = hasActor,
+		Name = name,
 
 		_onClientEventCallbacks = {} :: { [string]: (...any) -> () },
 		_onClientEventCallbacksUnr = {} :: { [string]: (...any) -> () },
 
-		_sendStack = {} :: { SendPacket },
-		_sendStackUnr = {} :: { SendPacket },
+		_sendStack = {} :: { NetworkPacket },
+		_sendStackUnr = {} :: { NetworkPacket },
 
 		_waitingThreads = {} :: { [thread]: boolean },
 		_waitingThreadsUnr = {} :: { [thread]: boolean },
@@ -148,7 +113,6 @@ function Client.new(Name: string): Client
 	local waitingThreads = self._waitingThreads
 	local waitingThreadsUnr = self._waitingThreadsUnr
 
-	local isParallel = self._parallel
 
 	--// Internal functions for firing callbacks without using unpack() too many times
 	local function _fireCallbacks(...: any)
@@ -186,155 +150,58 @@ function Client.new(Name: string): Client
 		if type(incomingData) ~= "table" then return end
 		if not next(onClientEventCallbacks) and not next(waitingThreads) then return end
 
-		if isParallel then
-			task.desynchronize()
-		end
-
 		debug.profilebegin("SwitchNet.Client Incoming Packets Job")
 
 		for _, packet in incomingData do
-			if not VerifyNetworkPacketIntegrity(packet) then
-				if isParallel then
-					task.synchronize()
-				end
+			if not VerifyNetworkPacketIntegrity(packet) then return end
 
-				return
-			end
-
-			local references = packet.References :: Bitstream.NBasedArray
-			references.n = #references
-			
-			local args = Read(packet.Data, references)
+			local args = Read(packet.Data, packet.References)
 			_fireCallbacks(table.unpack(args, 1, args.n))
 		end
 
 		debug.profileend()
-
-		if isParallel then
-			task.synchronize()
-		end
 	end)
 
 	self._onUnrClientEvent = self._unrRemoteEvent.OnClientEvent:Connect(function(IncomingData: { NetworkPacket })
 		if type(IncomingData) ~= "table" then return end
 		if not next(onClientEventCallbacksUnr) and not next(waitingThreadsUnr) then return end
 
-		if isParallel then
-			task.desynchronize()
-		end
-
 		debug.profilebegin("SwitchNet.Client Incoming Packets Job (Unreliable)")
 
 		for _, packet in IncomingData do
-			if not VerifyNetworkPacketIntegrity(packet) then
-				if isParallel then
-					task.synchronize()
-				end
+			if not VerifyNetworkPacketIntegrity(packet) then return end
 
-				return
-			end
-
-			local references = packet.References :: Bitstream.NBasedArray
-			references.n = #references
-			
-			local args = Read(packet.Data, references)
+			local args = Read(packet.Data, packet.References)
 			_fireCallbacksUnr(table.unpack(args, 1, args.n))
 		end
 
 		debug.profileend()
+	end)
 
-		if isParallel then
-			task.synchronize()
+
+	
+	self._replicationHandler = RunService.PostSimulation:Connect(function()
+		if #_sendStack > 0 then
+			remote:FireServer(_sendStack)
+			table.clear(_sendStack)
+		end
+
+		if #_sendStackUnr > 0 then
+			unreliableRemote:FireServer(_sendStackUnr)
+			table.clear(_sendStackUnr)
 		end
 	end)
 
 
 
-	local function OutgoingPacketsJobHandler()
-		debug.profilebegin("SwitchNet.Client Outgoing Packets Job")
-
-		if #_sendStack > 0 then
-			local networkPackets = {}
-
-			for _, packet in _sendStack do
-				local buff, references = Create(packet.Data, packet.Size)
-				table.insert(networkPackets, {
-					Data = buff,
-					References = references,
-				})
-			end
-
-			table.clear(_sendStack)
-
-			if isParallel then
-				task.synchronize()
-			end
-	
-			remote:FireServer(networkPackets)
-
-			if isParallel then
-				task.desynchronize()
-			end
-		end
-
-		if #_sendStackUnr > 0 then
-			local networkPackets = {}
-
-			for _, packet in _sendStackUnr do
-				local buff, references = Create(packet.Data, packet.Size)
-				table.insert(networkPackets, {
-					Data = buff,
-					References = references,
-				})
-			end
-
-			table.clear(_sendStackUnr)
-
-			if isParallel then
-				task.desynchronize()
-			end
-	
-			unreliableRemote:FireServer(networkPackets)
-
-			if isParallel then
-				task.synchronize()
-			end
-		end
-
-		debug.profileend()
-	end
-
-	if isParallel then
-		self._replicationHandler = RunService.PostSimulation:ConnectParallel(OutgoingPacketsJobHandler)
-	else
-		self._replicationHandler = RunService.PostSimulation:Connect(OutgoingPacketsJobHandler)
-	end
-
-
-
-	self._remoteFunction.OnClientInvoke = function(incomingData: NetworkPacket): { Data: buffer, References: Bitstream.NBasedArray }?
+	self._remoteFunction.OnClientInvoke = function(incomingData: NetworkPacket): NetworkPacket?
 		if not self._onClientInvokeCallback then return nil end
 
-		if isParallel then
-			task.desynchronize()
-		end
-
 		local results: Bitstream.NBasedArray
-
 		if incomingData then
-			if not VerifyNetworkPacketIntegrity(incomingData) then
-				if isParallel then
-					task.synchronize()
-				end
+			if not VerifyNetworkPacketIntegrity(incomingData) then return end
 
-				return
-			end
-
-			local references = incomingData.References :: Bitstream.NBasedArray
-			references.n = #references
-
-			local success, args = pcall(Read, incomingData.Data, references)
-
+			local success, args = pcall(Read, incomingData.Data, incomingData.References)
 			if success then
 				results = table.pack(pcall(self._onClientInvokeCallback, table.unpack(args, 1, args.n)))
 				results.n -= 1
@@ -344,20 +211,10 @@ function Client.new(Name: string): Client
 			end
 		end
 
-		if not results or results.n == 0 then
-			if isParallel then
-				task.synchronize()
-			end
-
-			return nil
-		end
+		if not results or results.n == 0 then return nil end
 		
 		local size = GetSizeOfValues(results)
 		local success, buff, references = pcall(Create, results, size)
-
-		if isParallel then
-			task.synchronize()
-		end
 
 		if not success then return nil end
 
@@ -415,6 +272,8 @@ function Client.DisconnectUnreliable(self: Client, name: string)
 	self._onClientEventCallbacksUnr[name] = nil
 end
 
+
+
 function Client.SetOnInvoke(self: Client, callback: (...any) -> ...any)
 	self._onClientInvokeCallback = callback
 end
@@ -422,66 +281,39 @@ end
 
 
 function Client.FireServer(self: Client, ...: any)
-	if self._parallel then
-		task.desynchronize()
-	end
-
 	local data = table.pack(...)
 	local size = GetSizeOfValues(data)
+	local buff, references = Create(data, size)
 	table.insert(self._sendStack, {
-		Size = size,
-		Data = if USE_DEEP_COPY then DeepClone(data) else data,
+		Data = buff,
+		References = references,
 	})
-
-	if self._parallel then
-		task.synchronize()
-	end
 end
 
 function Client.FireServerUnreliable(self: Client, ...: any)
-	if self._parallel then
-		task.desynchronize()
-	end
-
 	local data = table.pack(...)
 	local size = GetSizeOfValues(data)
+	local buff, references = Create(data, size)
 	table.insert(self._sendStackUnr, {
-		Size = size,
-		Data = if USE_DEEP_COPY then DeepClone(data) else data,
+		Data = buff,
+		References = references,
 	})
-
-	if self._parallel then
-		task.synchronize()
-	end
 end
 
 
 
 function Client.InvokeServer(self: Client, ...: any): ...any
-	if self._parallel then
-		task.desynchronize()
-	end
-
 	local sendData = table.pack(...)
 	local bufferSize = GetSizeOfValues(sendData)
 	local buff, references = Create(sendData, bufferSize)
 	local responsePacket: NetworkPacket
 
 	local success, result = pcall(function()
-		if self._parallel then
-			task.synchronize()
-		end
-		
 		responsePacket = self._remoteFunction:InvokeServer({
 			Data = buff,
 			References = references,
-			ReferenceCount = references.n,
 		})
 	end)
-
-	if self._parallel then
-		task.desynchronize()
-	end
 
 	if not success then
 		TestService:Error(`SwitchNet.Client '{self.Name}' InvokeServer failed! Error:\n{result}`)
@@ -491,15 +323,7 @@ function Client.InvokeServer(self: Client, ...: any): ...any
 	if responsePacket == nil then return nil end
 	if not VerifyNetworkPacketIntegrity(responsePacket) then return nil end
 
-	local responseReferences = responsePacket.References :: Bitstream.NBasedArray
-	responseReferences.n = #responseReferences
-
-	local response = Read(responsePacket.Data, responseReferences)
-
-	if self._parallel then
-		task.synchronize()
-	end
-
+	local response = Read(responsePacket.Data, responsePacket.References)
 	return table.unpack(response, 1, response.n)
 end
 

@@ -61,7 +61,7 @@ return {
 		return Size
 	end,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): ({ [any]: any }, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): ({ [any]: any }, number)
 		local OriginPointer: number = Pointer
 
 		local Table: { [any]: any }
@@ -156,7 +156,7 @@ return {
 		return Table, Pointer - OriginPointer
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: { [any]: any }): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: { [any]: any }): number
 		local OriginPointer: number = Pointer
 
 		local TableType: number = 0
@@ -198,14 +198,11 @@ return {
 					local PtrOffset: number = IndexType.Writer(Buffer, References, Pointer, i)
 					Pointer += PtrOffset
 				else
-					local NewCount: number = References.n + 1
-					References.n = NewCount
-
+					local NewCount: number = #References + 1
 					buffer.writeu8(Buffer, Pointer, 255)
 					buffer.writeu16(Buffer, Pointer + 1, NewCount)
 
 					Pointer += 3
-
 					References[NewCount] = i
 				end
 
@@ -219,14 +216,11 @@ return {
 					local PtrOffset: number = ValueType.Writer(Buffer, References, Pointer, v)
 					Pointer += PtrOffset
 				else
-					local NewCount: number = References.n + 1
-					References.n = NewCount
-
+					local NewCount: number = #References + 1
 					buffer.writeu8(Buffer, Pointer, 255)
 					buffer.writeu16(Buffer, Pointer + 1, NewCount)
 
 					Pointer += 3
-
 					References[NewCount] = v
 				end
 			end
@@ -249,14 +243,11 @@ return {
 					local PtrOffset: number = Type.Writer(Buffer, References, Pointer, v)
 					Pointer += PtrOffset
 				else
-					local NewCount: number = References.n + 1
-					References.n = NewCount
-
+					local NewCount: number = #References + 1
 					buffer.writeu8(Buffer, Pointer, 255)
 					buffer.writeu16(Buffer, Pointer + 1, NewCount)
 
 					Pointer += 3
-
 					References[NewCount] = v
 				end
 			end

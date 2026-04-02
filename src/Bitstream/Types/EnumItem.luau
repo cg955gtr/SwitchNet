@@ -20,7 +20,7 @@ return {
 		return 5 + #EnumTypeNameReferences[Value.EnumType]
 	end,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (EnumItem, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (EnumItem, number)
 		local Value: number = buffer.readu32(Buffer, Pointer)
 		local ListNameSize: number = buffer.readu8(Buffer, Pointer + 4)
 		local ListName: string = buffer.readstring(Buffer, Pointer + 5, ListNameSize)
@@ -28,7 +28,7 @@ return {
 		return (Enum[ListName] :: any):FromValue(Value), 5 + ListNameSize
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: EnumItem): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: EnumItem): number
 		local ListName: string = EnumTypeNameReferences[Value.EnumType]
 		local ListNameSize: number = #ListName
 

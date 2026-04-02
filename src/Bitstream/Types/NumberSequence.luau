@@ -16,7 +16,7 @@ return {
 		return 1 + SIZE_PER_KEYPOINT * #Value.Keypoints
 	end,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (NumberSequence, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (NumberSequence, number)
 		local Keypoints: { NumberSequenceKeypoint } = {}
 		local Size: number = buffer.readu8(Buffer, Pointer)
 		Pointer += 1
@@ -34,7 +34,7 @@ return {
 		return NumberSequence.new(Keypoints), 1 + SIZE_PER_KEYPOINT * Size
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: NumberSequence): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: NumberSequence): number
 		local Keypoints: { NumberSequenceKeypoint } = Value.Keypoints
 		local Size: number = #Keypoints
 

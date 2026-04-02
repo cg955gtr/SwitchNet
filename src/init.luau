@@ -2,7 +2,7 @@
 	Author: 8ch99
 	File: SwitchNet.luau
 	Date written: 15th November 2025
-	Last edited: 23rd March 2026
+	Last edited: 2nd April 2026
 
 	A blazingly fast and easy to use networking module for reducing bandwidth and overhead across remotes.
 ]==]
@@ -39,7 +39,8 @@ SOFTWARE.
 --!native
 --!optimize 2
 
-local VERSION = "v1.1.4"
+local VERSION = "v1.2.0"
+local PRINT_OUTPUT_MESSAGE = true
 
 --// Services
 
@@ -65,22 +66,23 @@ local SwitchNet = table.freeze({
 })
 
 
-task.spawn(function()
-	--// Print message
-	--// Check if it exists already too, so if theres several dependencies, it won't add extras
-	local runContext = if RunService:IsClient() then "Client" else "Server"
-	local message = `SwitchNet {runContext} - {VERSION} loaded successfully! Created by 8ch99.`
-	local patternSanitizedMessage = string.gsub(message, "([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
-	
-	for _, log in LogService:GetLogHistory() do
-		if log.messageType == Enum.MessageType.MessageInfo and string.match(log.message, patternSanitizedMessage) then
-			--// Message was sent already, cancel!
-			return
+if PRINT_OUTPUT_MESSAGE then
+	task.spawn(function()
+		--// Print message
+		--// Check if it exists already too, so if theres several dependencies, it won't add extras
+		local runContext = if RunService:IsClient() then "Client" else "Server"
+		local message = `SwitchNet {runContext} - {VERSION} loaded successfully! Created by 8ch99.`
+		
+		for _, log in LogService:GetLogHistory() do
+			if log.messageType == Enum.MessageType.MessageInfo and string.find(log.message, message, nil, true) then
+				--// Message was sent already, cancel!
+				return
+			end
 		end
-	end
-	
-	TestService:Message(message)
-end)
+		
+		TestService:Message(message)
+	end)
+end
 
 
 return SwitchNet

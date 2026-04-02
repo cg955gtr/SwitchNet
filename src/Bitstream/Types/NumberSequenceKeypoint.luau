@@ -12,7 +12,7 @@
 return {
 	Size = 12,
 
-	Reader = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number): (NumberSequenceKeypoint, number)
+	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (NumberSequenceKeypoint, number)
 		return NumberSequenceKeypoint.new(
 			buffer.readf32(Buffer, Pointer),
 			buffer.readf32(Buffer, Pointer + 4),
@@ -20,7 +20,7 @@ return {
 		), 12
 	end,
 
-	Writer = function(Buffer: buffer, References: { n: number, [number]: any }, Pointer: number, Value: NumberSequenceKeypoint): number
+	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: NumberSequenceKeypoint): number
 		buffer.writef32(Buffer, Pointer, Value.Time)
 		buffer.writef32(Buffer, Pointer + 4, Value.Value)
 		buffer.writef32(Buffer, Pointer + 8, Value.Envelope)
