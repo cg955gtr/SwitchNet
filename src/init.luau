@@ -39,7 +39,7 @@ SOFTWARE.
 --!native
 --!optimize 2
 
-local VERSION = "v1.2.0"
+local VERSION = "v1.2.1"
 local PRINT_OUTPUT_MESSAGE = true
 
 --// Services

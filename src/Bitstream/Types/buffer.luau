@@ -11,30 +11,26 @@
 
 return {
 	GetSize = function(Value: buffer): number
-		return 4 + buffer.len(Value)
+		return 2 + buffer.len(Value)
 	end,
 
-	Reader = function(Buffer: buffer, References: { any }, Pointer: number): (buffer, number)
-		local Size: number = buffer.readu32(Buffer, Pointer)
-
-		if Size == 0 then
-			return buffer.create(0), 4
+	Reader = function(buff: buffer, references: { any }, pointer: number): (buffer, number)
+		local size = buffer.readu16(buff, pointer)
+		local newBuffer = buffer.create(size)
+		if size == 0 then
+			return newBuffer, 2
 		end
-
-		local String: string = buffer.readstring(Buffer, Pointer + 4, Size)
-
-		return buffer.fromstring(String), 4 + Size
+			
+		buffer.copy(newBuffer, 0, buff, pointer + 2, size)
+		return newBuffer, 2 + size
 	end,
 
-	Writer = function(Buffer: buffer, References: { any }, Pointer: number, Value: buffer): number
-		local Size: number = buffer.len(Value)
-
-		buffer.writeu32(Buffer, Pointer, Size)
-		
-		if Size > 0 then
-			buffer.writestring(Buffer, Pointer + 4, buffer.tostring(Value))
+	Writer = function(buff: buffer, references: { any }, pointer: number, value: buffer): number
+		local size = buffer.len(value)
+		buffer.writeu16(buff, pointer, size)
+		if size > 0 then
+			buffer.copy(buff, pointer + 2, value, size)
 		end
-
-		return 4 + Size
+		return 2 + size
 	end,
 }
