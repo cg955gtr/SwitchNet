@@ -1,9 +1,6 @@
---[==[
-	Author: 8ch99
-	File: DateTime.luau
-	Date written: 15th November 2025
-	Last edited: 17th December 2025
-]==]
+--// Author: 8ch99
+--// Date written: 15th November 2025
+--// SwitchNet Networking Library
 
 --!strict
 --!native

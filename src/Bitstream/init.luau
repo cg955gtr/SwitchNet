@@ -1,9 +1,6 @@
---[==[
-	Author: 8ch99
-	File: Bitstream.luau
-	Date written: 15th November 2025
-	Last edited: 23rd March 2026
-]==]
+--// Author: 8ch99
+--// Date written: 15th November 2025
+--// SwitchNet Networking Library
 
 --!strict
 --!native

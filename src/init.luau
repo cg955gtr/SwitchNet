@@ -1,17 +1,14 @@
---[==[
-	Author: 8ch99
-	File: SwitchNet.luau
-	Date written: 15th November 2025
-	Last edited: 2nd April 2026
-
-	A blazingly fast and easy to use networking module for reducing bandwidth and overhead across remotes.
-]==]
+--// Author: 8ch99
+--// Date written: 15th November 2025
+--// SwitchNet Networking Library
+--// 
+--// A blazingly fast and easy to use networking module for reducing bandwidth and overhead across remotes
 
 --[==[
 
 MIT License
 
-Copyright (c) 2025 8ch99
+Copyright (c) 2026 8ch99
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -39,7 +36,7 @@ SOFTWARE.
 --!native
 --!optimize 2
 
-local VERSION = "v1.2.1"
+local VERSION = "v1.2.2"
 local PRINT_OUTPUT_MESSAGE = true
 
 --// Services
