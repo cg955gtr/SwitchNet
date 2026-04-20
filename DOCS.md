@@ -225,7 +225,7 @@ Server.FireAllClientsUnreliable(Remote, "Hello everybody from the server! (Unrel
 ```luau
 function Server.FireAllClientsExcept(self: Server, exemptPlayer: Player, ...: any): ()
 ```
-> Sends the given data to all players over the remote bridge *EXCLUDING* the passed player.`
+> Sends the given data to all players over the remote bridge *EXCLUDING* the passed player.
 ### Parameters
 - `self` : `Server` - The SwitchNet server instance.
 - `exemptPlayer` : `Player` - The player who should not receive the data.
@@ -239,7 +239,7 @@ Server.FireAllClientsExcept(Remote, game.Players['8ch99'], "Hello everybody (exc
 ```luau
 function Server.FireAllClientsUnreliableExcept(self: Server, exemptPlayer: Player, ...: any): ()
 ```
-> Sends the given data to all players over the remote bridge via. UnreliableRemoteEvent *EXCLUDING* the passed player.`
+> Sends the given data to all players over the remote bridge via. UnreliableRemoteEvent *EXCLUDING* the passed player.
 ### Parameters
 - `self` : `Server` - The SwitchNet server instance.
 - `exemptPlayer` : `Player` - The player who should not receive the data.
@@ -247,6 +247,50 @@ function Server.FireAllClientsUnreliableExcept(self: Server, exemptPlayer: Playe
 ### Example
 ```luau
 Server.FireAllClientsUnreliableExcept(Remote, game.Players['8ch99'], "Hello everybody (excluding 8ch99) from the server! (Unreliable)")
+```
+
+## Server.FireClientList
+```luau
+function Server.FireClientList(self: Server, exemptPlayer: Player, ...: any): ()
+```
+> Sends the given data to the players in the given player array.
+### Parameters
+- `self` : `Server` - The SwitchNet server instance.
+- `exemptPlayer` : `Player` - The target players who should receive the data.
+- `...` : `any` - The data to send.
+### Example
+```luau
+local Players = game:GetService("Players")
+local playerList = Players:GetPlayers()
+Random.new():Shuffle(playerList)
+
+for i = (#playerList // 2) + 1, #playerList do
+	playerList[i] = nil
+end
+
+Server.FireClientList(Remote, playerList, "Hello random people from the server!")
+```
+
+## Server.FireClientListUnreliable
+```luau
+function Server.FireClientListUnreliable(self: Server, exemptPlayer: Player, ...: any): ()
+```
+> Sends the given data to the players in the given player array (via. UnreliableRemoteEvent).
+### Parameters
+- `self` : `Server` - The SwitchNet server instance.
+- `exemptPlayer` : `Player` - The player who should not receive the data.
+- `...` : `any` - The data to send.
+### Example
+```luau
+local Players = game:GetService("Players")
+local playerList = Players:GetPlayers()
+Random.new():Shuffle(playerList)
+
+for i = (#playerList // 2) + 1, #playerList do
+	playerList[i] = nil
+end
+
+Server.FireClientListUnreliable(Remote, playerList, "Hello random people from the server! (Unreliable)")
 ```
 
 ## Server.InvokeClient
