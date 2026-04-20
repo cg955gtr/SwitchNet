@@ -333,7 +333,6 @@ end
 function Server.FireClient(self: Server, player: Player, ...: any)
 	local sendStack = self._playerSendStack
 	local stack = sendStack[player]
-
 	if not stack then
 		stack = {}
 		sendStack[player] = stack
@@ -351,7 +350,6 @@ end
 function Server.FireClientUnreliable(self: Server, player: Player, ...: any)
 	local sendStack = self._playerSendStackUnr
 	local stack = sendStack[player]
-
 	if not stack then
 		stack = {}
 		sendStack[player] = stack
@@ -386,6 +384,50 @@ function Server.FireAllClientsUnreliable(self: Server, ...: any)
 		Data = buff,
 		References = references,
 	})
+end
+
+
+
+function Server.FireClientList(self: Server, players: { Player }, ...: any)
+	local sendStack = self._playerSendStack
+	
+	local data = table.pack(...)
+	local size = GetSizeOfValues(data)
+	local buff, references = Create(data, size)
+	local packet = {
+		Data = buff,
+		References = references,
+	}
+	
+	for _, player in players do
+		local stack = sendStack[player]
+		if not stack then
+			stack = {}
+			sendStack[player] = stack
+		end
+		table.insert(stack, packet)
+	end
+end
+
+function Server.FireClientListUnreliable(self: Server, players: { Player }, ...: any)
+	local sendStack = self._playerSendStackUnr
+	
+	local data = table.pack(...)
+	local size = GetSizeOfValues(data)
+	local buff, references = Create(data, size)
+	local packet = {
+		Data = buff,
+		References = references,
+	}
+	
+	for _, player in players do
+		local stack = sendStack[player]
+		if not stack then
+			stack = {}
+			sendStack[player] = stack
+		end
+		table.insert(stack, packet)
+	end
 end
 
 

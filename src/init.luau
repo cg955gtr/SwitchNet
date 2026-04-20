@@ -36,7 +36,7 @@ SOFTWARE.
 --!native
 --!optimize 2
 
-local VERSION = "v1.2.2"
+local VERSION = "v1.2.3"
 local PRINT_OUTPUT_MESSAGE = true
 
 --// Services
@@ -71,7 +71,7 @@ if PRINT_OUTPUT_MESSAGE then
 		local message = `SwitchNet {runContext} - {VERSION} loaded successfully! Created by 8ch99.`
 		
 		for _, log in LogService:GetLogHistory() do
-			if log.messageType == Enum.MessageType.MessageInfo and string.find(log.message, message, nil, true) then
+			if log.messageType == Enum.MessageType.MessageInfo and message == log.message then
 				--// Message was sent already, cancel!
 				return
 			end

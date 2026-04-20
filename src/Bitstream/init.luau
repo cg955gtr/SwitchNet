@@ -69,12 +69,6 @@ end
 
 
 function Bitstream.Read(buff: buffer, references: { any }): NBasedArray
-	--// TODO: Add some extra checks probably? It might be good enough for now
-	--// Remote typechecks are done seperately already
-	
-	--local Count: number = References.n
-	--assert(type(Count) == "number" and tostring(Count) == tostring(math.floor(Count)), "invalid remote args!")
-
 	--// Check buffer size
 	local size = buffer.len(buff)
 	assert(size <= BUFFER_SIZE_LIMIT, "buffer too large!")
