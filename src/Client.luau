@@ -19,6 +19,7 @@ const TestService = game:GetService("TestService")
 
 const Stream = require("./Stream")
 const Typedefs = require("./Typedefs")
+const FilterContainer = require("./FilterContainer")
 
 const createStream = Stream.Create
 const readStream = Stream.Read
@@ -47,6 +48,7 @@ type Client = Typedefs.Client
 
 type NBasedArray = Typedefs.NBasedArray
 type NetworkPacket = Typedefs.NetworkPacket
+type RequestType = Typedefs.RequestType
 
 --// @module Client
 
@@ -77,6 +79,9 @@ function Client.new(name: string): Client
 	local self = {
 		Name = name,
 
+		_filter = FilterContainer.new(),
+		_preProcessFilter = FilterContainer.new(),
+
 		_onClientEventCallbacks = {} :: { [string]: (...any) -> () },
 		_onClientEventCallbacksUnr = {} :: { [string]: (...any) -> () },
 
@@ -105,6 +110,8 @@ function Client.new(name: string): Client
 	--// Internal functions for firing callbacks without using unpack() too many times
 	local function fireCallbacks(...: any)
 
+		if not self._filter:Check("Reliable", ...) then return end
+
 		for thread: thread in waitingThreads do
 			coroutine.resume(thread, ...)
 		end
@@ -120,6 +127,8 @@ function Client.new(name: string): Client
 	end
 
 	local function fireCallbacksUnr(...: any)
+
+		if not self._filter:Check("Unreliable", ...) then return end
 		
 		for thread: thread in waitingThreadsUnr do
 			coroutine.resume(thread, ...)
@@ -146,6 +155,7 @@ function Client.new(name: string): Client
 
 		for _, packet in incomingData do
 			if not verifyNetworkPacket(packet) then return end
+			if not self._preProcessFilter:Check("Reliable", packet.Data, packet.References) then return end
 
 			local args: NBasedArray = readStream(packet.Data, packet.References)
 			fireCallbacks(table.unpack(args, 1, args.n))
@@ -164,6 +174,7 @@ function Client.new(name: string): Client
 
 		for _, packet in IncomingData do
 			if not verifyNetworkPacket(packet) then return end
+			if not self._preProcessFilter:Check("Unreliable", packet.Data, packet.References) then return end
 
 			local args: NBasedArray = readStream(packet.Data, packet.References)
 			fireCallbacksUnr(table.unpack(args, 1, args.n))
@@ -194,6 +205,8 @@ function Client.new(name: string): Client
 	self._remoteFunction.OnClientInvoke = function(incomingData: NetworkPacket): NetworkPacket?
 		
 		if not self._onClientInvokeCallback then return nil end
+		if not verifyNetworkPacket(incomingData) then return nil end
+		if not self._preProcessFilter:Check("Request", incomingData.Data, incomingData.References) then return nil end
 
 		local results: NBasedArray
 		if incomingData then
@@ -201,7 +214,11 @@ function Client.new(name: string): Client
 
 			local success: boolean, args: NBasedArray = pcall(readStream, incomingData.Data, incomingData.References)
 			if success then
-				results = table.pack(pcall(self._onClientInvokeCallback, table.unpack(args, 1, args.n)))
+				results = table.pack(pcall(function(...: any)
+					if not self._filter:Check("Request", ...) then return nil end
+					return self._onClientInvokeCallback(...)
+				end, table.unpack(args, 1, args.n)))
+
 				results.n -= 1
 				if table.remove(results, 1) == false then
 					results = { n = 0 }
@@ -242,6 +259,9 @@ function Client.Destroy(self: Client)
 	self._replicationHandler:Disconnect()
 	self._onUnrClientEvent:Disconnect()
 	self._onClientEvent:Disconnect()
+
+	self._preProcessFilter:Destroy()
+	self._filter:Destroy()
 
 	table.clear(self._onClientEventCallbacks)
 	table.clear(self._sendStack)
@@ -340,6 +360,26 @@ function Client.InvokeServer(self: Client, ...: any): ...any
 	local response: NBasedArray = readStream(responsePacket.Data, responsePacket.References)
 	return table.unpack(response, 1, response.n)
 
+end
+
+
+
+function Client.AddFilter(self: Client, name: string, callback: (RequestType, ...any) -> boolean, priority: number?)
+	self._filter:AddFilter(name, callback, priority)
+end
+
+function Client.RemoveFilter(self: Client, name: string)
+	self._filter:RemoveFilter(name)
+end
+
+
+
+function Client.AddPreProcessFilter(self: Client, name: string, callback: (RequestType, buffer, { any }) -> boolean, priority: number?)
+	self._preProcessFilter:AddFilter(name, callback, priority)
+end
+
+function Client.RemovePreProcessFilter(self: Client, name: string)
+	self._preProcessFilter:RemoveFilter(name)
 end
 
 

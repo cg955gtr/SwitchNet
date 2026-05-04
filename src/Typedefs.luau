@@ -4,9 +4,17 @@
 
 --!strict
 
+--// Dependencies
+
+const FilterContainer = require("./FilterContainer")
+
+--// Typedefs
+
+type FilterContainer<T...> = FilterContainer.FilterContainer<T...>
+
+export type RequestType = "Reliable" | "Unreliable" | "Request"
+
 export type NBasedArray = { n: number, [number]: any }
-
-
 
 export type StreamType = {
 	Name: string,
@@ -27,6 +35,12 @@ export type NetworkPacket = {
 
 export type Server = {
 	Name: string,
+
+	_filter: FilterContainer<RequestType, Player, any>,
+	_preProcessFilter: FilterContainer<RequestType, Player, buffer, { any }>,
+	
+	_serializeProcessor: ((Player, buffer) -> buffer)?,
+	_deserializeProcessor: ((Player, buffer) -> buffer)?,
 
 	_onServerInvokeCallback: ((Player, ...any) -> ...any)?,
 
@@ -56,6 +70,9 @@ export type Server = {
 
 export type Client = {
 	Name: string,
+
+	_filter: FilterContainer<RequestType, any>,
+	_preProcessFilter: FilterContainer<RequestType, buffer, { any }>,
 
 	_onClientInvokeCallback: ((...any) -> ...any)?,
 

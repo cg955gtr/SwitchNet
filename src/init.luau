@@ -30,7 +30,7 @@
 --!native
 --!optimize 2
 
-const VERSION = "v1.3.0"
+const VERSION = "v1.4.0"
 const PRINT_OUTPUT_MESSAGE = true
 
 --// Services

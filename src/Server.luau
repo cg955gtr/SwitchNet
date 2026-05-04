@@ -20,6 +20,7 @@ const TestService = game:GetService("TestService")
 
 const Stream = require("./Stream")
 const Typedefs = require("./Typedefs")
+const FilterContainer = require("./FilterContainer")
 
 const createStream = Stream.Create
 const readStream = Stream.Read
@@ -49,6 +50,7 @@ type Server = Typedefs.Server
 
 type NBasedArray = Typedefs.NBasedArray
 type NetworkPacket = Typedefs.NetworkPacket
+type RequestType = Typedefs.RequestType
 
 --// @module Server
 
@@ -67,6 +69,9 @@ function Server.new(name: string): Server
 
 	local self = {
 		Name = name,
+
+		_filter = FilterContainer.new(),
+		_preProcessFilter = FilterContainer.new(),
 
 		_waitingThreads = {} :: { [thread]: boolean },
 		_waitingThreadsUnr = {} :: { [thread]: boolean },
@@ -132,6 +137,8 @@ function Server.new(name: string): Server
 
 	--// Internal functions for firing callbacks without using unpack() too many times
 	local function fireCallbacks(player: Player, ...: any)
+
+		if not self._filter:Check("Reliable", player, ...) then return end
 		
 		for thread: thread in waitingThreads do
 			coroutine.resume(thread, player, ...)
@@ -148,6 +155,8 @@ function Server.new(name: string): Server
 	end
 
 	local function fireCallbacksUnr(player: Player, ...: any)
+
+		if not self._filter:Check("Unreliable", player, ...) then return end
 		
 		for thread: thread in waitingThreadsUnr do
 			coroutine.resume(thread, player, ...)
@@ -174,6 +183,7 @@ function Server.new(name: string): Server
 		
 		for _, packet: NetworkPacket in incomingData do
 			if not verifyNetworkPacket(packet) then return end
+			if not self._preProcessFilter:Check("Reliable", player, packet.Data, packet.References) then return end
 			
 			local args: NBasedArray = readStream(packet.Data, packet.References)
 			fireCallbacks(player, table.unpack(args, 1, args.n))
@@ -192,6 +202,7 @@ function Server.new(name: string): Server
 
 		for _, packet: NetworkPacket in incomingData do
 			if not verifyNetworkPacket(packet) then return end
+			if not self._preProcessFilter:Check("Unreliable", player, packet.Data, packet.References) then return end
 			
 			local args: NBasedArray = readStream(packet.Data, packet.References)
 			fireCallbacksUnr(player, table.unpack(args, 1, args.n))
@@ -234,11 +245,16 @@ function Server.new(name: string): Server
 		
 		if not self._onServerInvokeCallback then return nil end
 		if not verifyNetworkPacket(incomingData) then return nil end
+		if not self._preProcessFilter:Check("Request", player, incomingData.Data, incomingData.References) then return nil end
 		
 		local results: NBasedArray
 		local success: boolean, args: NBasedArray = pcall(readStream, incomingData.Data, incomingData.References)
 		if success then
-			results = table.pack(pcall(self._onServerInvokeCallback, player, table.unpack(args, 1, args.n)))
+			results = table.pack(pcall(function(player: Player, ...: any)
+				if not self._filter:Check("Request", player, ...) then return nil end
+				return self._onServerInvokeCallback(player, ...)
+			end, player, table.unpack(args, 1, args.n)))
+
 			results.n -= 1
 			if table.remove(results, 1) == false then
 				results = { n = 0 }
@@ -284,6 +300,9 @@ function Server.Destroy(self: Server)
 		self._remoteContainer:Destroy()
 		--// ^ also destroys the remote events
 	end)
+
+	self._preProcessFilter:Destroy()
+	self._filter:Destroy()
 
 	table.clear(self._waitingThreads)
 	table.clear(self._waitingThreadsUnr)
@@ -339,6 +358,7 @@ end
 
 
 function Server.FireClient(self: Server, player: Player, ...: any)
+	
 	local sendStack: { [Player]: { NetworkPacket } } = self._playerSendStack
 	local stack: { NetworkPacket } = sendStack[player]
 	if not stack then
@@ -353,9 +373,11 @@ function Server.FireClient(self: Server, player: Player, ...: any)
 		Data = buff,
 		References = references,
 	})
+
 end
 
 function Server.FireClientUnreliable(self: Server, player: Player, ...: any)
+	
 	local sendStack: { [Player]: { NetworkPacket } } = self._playerSendStackUnr
 	local stack: { NetworkPacket } = sendStack[player]
 	if not stack then
@@ -370,11 +392,13 @@ function Server.FireClientUnreliable(self: Server, player: Player, ...: any)
 		Data = buff,
 		References = references,
 	})
+
 end
 
 
 
 function Server.FireAllClients(self: Server, ...: any)
+	
 	local data: NBasedArray = table.pack(...)
 	local size: number = getStreamSizeOfValues(data)
 	local buff: buffer, references: { any } = createStream(data, size)
@@ -382,9 +406,11 @@ function Server.FireAllClients(self: Server, ...: any)
 		Data = buff,
 		References = references,
 	})
+
 end
 
 function Server.FireAllClientsUnreliable(self: Server, ...: any)
+	
 	local data: NBasedArray = table.pack(...)
 	local size: number = getStreamSizeOfValues(data)
 	local buff: buffer, references: { any } = createStream(data, size)
@@ -392,11 +418,13 @@ function Server.FireAllClientsUnreliable(self: Server, ...: any)
 		Data = buff,
 		References = references,
 	})
+
 end
 
 
 
 function Server.FireClientList(self: Server, players: { Player }, ...: any)
+	
 	local sendStack: { [Player]: { NetworkPacket } } = self._playerSendStack
 	local data: NBasedArray = table.pack(...)
 	local size: number = getStreamSizeOfValues(data)
@@ -414,9 +442,11 @@ function Server.FireClientList(self: Server, players: { Player }, ...: any)
 		end
 		table.insert(stack, packet)
 	end
+
 end
 
 function Server.FireClientListUnreliable(self: Server, players: { Player }, ...: any)
+	
 	local sendStack: { [Player]: { NetworkPacket } } = self._playerSendStackUnr
 	local data: NBasedArray = table.pack(...)
 	local size: number = getStreamSizeOfValues(data)
@@ -434,11 +464,13 @@ function Server.FireClientListUnreliable(self: Server, players: { Player }, ...:
 		end
 		table.insert(stack, packet)
 	end
+
 end
 
 
 
 function Server.FireAllClientsExcept(self: Server, exemptPlayer: Player, ...: any)
+	
 	local sendStack: { [Player]: { NetworkPacket } } = self._playerSendStack
 	local data: NBasedArray = table.pack(...)
 	local size: number = getStreamSizeOfValues(data)
@@ -458,9 +490,11 @@ function Server.FireAllClientsExcept(self: Server, exemptPlayer: Player, ...: an
 			table.insert(stack, packet)
 		end
 	end
+
 end
 
 function Server.FireAllClientsUnreliableExcept(self: Server, exemptPlayer: Player, ...: any)
+	
 	local sendStack: { [Player]: { NetworkPacket } } = self._playerSendStackUnr
 	local data: NBasedArray = table.pack(...)
 	local size: number = getStreamSizeOfValues(data)
@@ -480,11 +514,13 @@ function Server.FireAllClientsUnreliableExcept(self: Server, exemptPlayer: Playe
 			table.insert(stack, packet)
 		end
 	end
+
 end
 
 
 
 function Server.InvokeClient(self: Server, player: Player, ...: any): ...any
+
 	local sendData: NBasedArray = table.pack(...)
 	local size: number = getStreamSizeOfValues(sendData)
 	local buff: buffer, references: { any } = createStream(sendData, size)
@@ -507,6 +543,27 @@ function Server.InvokeClient(self: Server, player: Player, ...: any): ...any
 
 	local response: NBasedArray = readStream(responsePacket.Data, responsePacket.References)
 	return table.unpack(response, 1, response.n)
+
+end
+
+
+
+function Server.AddFilter(self: Server, name: string, callback: (RequestType, Player, ...any) -> boolean, priority: number?)
+	self._filter:AddFilter(name, callback, priority)
+end
+
+function Server.RemoveFilter(self: Server, name: string)
+	self._filter:RemoveFilter(name)
+end
+
+
+
+function Server.AddPreProcessFilter(self: Server, name: string, callback: (RequestType, Player, buffer, { any }) -> boolean, priority: number?)
+	self._preProcessFilter:AddFilter(name, callback, priority)
+end
+
+function Server.RemovePreProcessFilter(self: Server, name: string)
+	self._preProcessFilter:RemoveFilter(name)
 end
 
 

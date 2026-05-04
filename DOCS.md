@@ -314,6 +314,68 @@ print(`The player's local time is: {string.format("%02d:%02d:%02d", Date.hour, D
 
 
 
+## Server.AddFilter
+```luau
+function Server.AddFilter(self: Server, name: string, callback: ("Reliable" | "Unreliable" | "Request", Player, ...any) -> boolean, priority: number?): ()
+```
+> Adds a filter callback to the server. If the callback returns false, the remote request is dropped.
+### Parameters
+- `self` : `Server` - The SwitchNet server instance.
+- `name` : `string` - The name of the filter.
+- `callback` : `("Reliable" | "Unreliable" | "Request", Player, ...any) -> boolean` - The callback to use. (params are request type, calling player and data)
+- `priority` : `number?` - The priority of the filter (lower = called earlier)
+### Example
+```luau
+Server.AddFilter(Remote, "ActionArgCheck", function(player: Player, action: string): boolean
+	return type(action) == "string" and VALID_ACTIONS[action] ~= nil --// The action must exist
+end, 10)
+```
+
+## Server.RemoveFilter
+```luau
+function Server.RemoveFilter(self: Server, name: string): ()
+```
+> Removes a filter callback from the server if it exists.
+### Parameters
+- `self` : `Server` - The SwitchNet server instance.
+- `name` : `string` - The name of the filter.
+### Example
+```luau
+Server.RemoveFilter(Remote, "ActionArgCheck")
+```
+
+
+## Server.AddPreProcessFilter
+```luau
+function Server.AddPreProcessFilter(self: Server, name: string, callback: ("Reliable" | "Unreliable" | "Request", Player, buffer, { any }) -> boolean, priority: number?): ()
+```
+> Adds a (pre-process, called before any deserialization work is done) filter callback to the server. If the callback returns false, the remote request is dropped.
+### Parameters
+- `self` : `Server` - The SwitchNet server instance.
+- `name` : `string` - The name of the filter.
+- `callback` : `("Reliable" | "Unreliable" | "Request", Player, buffer, { any }) -> boolean` - The callback to use. (params are request type, calling player, buffer and references table)
+- `priority` : `number?` - The priority of the filter (lower = called earlier)
+### Example
+```luau
+Server.AddPreProcessFilter(Remote, "EnabledCheck", function(): boolean
+	return configuration.isRemoteBridgeEnabled
+end, 5)
+```
+
+## Server.RemovePreProcessFilter
+```luau
+function Server.RemovePreProcessFilter(self: Server, name: string): ()
+```
+> Removes a (pre-process, called before any deserialization work is done) filter callback from the server if it exists.
+### Parameters
+- `self` : `Server` - The SwitchNet server instance.
+- `name` : `string` - The name of the filter.
+### Example
+```luau
+Server.RemovePreProcessFilter(Remote, "EnabledCheck")
+```
+
+
 
 # > SwitchNet.Client
 
@@ -507,4 +569,67 @@ local Time: number = Client.InvokeServer(Remote, "GetLastUpdateTime")
 local TimeNow: number = workspace:GetServerTimeNow()
 
 print(`It has been ~{math.round(TimeNow - Time)} seconds since the last update.`)
+```
+
+
+
+## Client.AddFilter
+```luau
+function Client.AddFilter(self: Client, name: string, callback: ("Reliable" | "Unreliable" | "Request", ...any) -> boolean, priority: number?): ()
+```
+> Adds a filter callback to the client. If the callback returns false, the remote request is dropped.
+### Parameters
+- `self` : `Client` - The SwitchNet client instance.
+- `name` : `string` - The name of the filter.
+- `callback` : `("Reliable" | "Unreliable" | "Request", ...any) -> boolean` - The callback to use. (params are request type and data)
+- `priority` : `number?` - The priority of the filter (lower = called earlier)
+### Example
+```luau
+Client.AddFilter(Remote, "ActionArgCheck", function(action: string): boolean
+	return type(action) == "string" and VALID_ACTIONS[action] ~= nil --// The action must exist
+end, 10)
+```
+
+## Client.RemoveFilter
+```luau
+function Client.RemoveFilter(self: Client, name: string): ()
+```
+> Removes a filter callback from the client if it exists.
+### Parameters
+- `self` : `Client` - The SwitchNet client instance.
+- `name` : `string` - The name of the filter.
+### Example
+```luau
+Client.RemoveFilter(Remote, "ActionArgCheck")
+```
+
+
+## Client.AddPreProcessFilter
+```luau
+function Client.AddPreProcessFilter(self: Client, name: string, callback: ("Reliable" | "Unreliable" | "Request", buffer, { any }) -> boolean, priority: number?): ()
+```
+> Adds a (pre-process, called before any deserialization work is done) filter callback to the client. If the callback returns false, the remote request is dropped.
+### Parameters
+- `self` : `Client` - The SwitchNet client instance.
+- `name` : `string` - The name of the filter.
+- `callback` : `("Reliable" | "Unreliable" | "Request", buffer, { any }) -> boolean` - The callback to use. (params are request type, buffer and references table)
+- `priority` : `number?` - The priority of the filter (lower = called earlier)
+### Example
+```luau
+Client.AddPreProcessFilter(Remote, "EnabledCheck", function(): boolean
+	return configuration.isRemoteBridgeEnabled
+end, 5)
+```
+
+## Client.RemovePreProcessFilter
+```luau
+function Client.RemovePreProcessFilter(self: Client, name: string): ()
+```
+> Removes a (pre-process, called before any deserialization work is done) filter callback from the client if it exists.
+### Parameters
+- `self` : `Client` - The SwitchNet client instance.
+- `name` : `string` - The name of the filter.
+### Example
+```luau
+Client.RemovePreProcessFilter(Remote, "EnabledCheck")
 ```
