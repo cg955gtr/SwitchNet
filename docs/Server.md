@@ -304,7 +304,7 @@ function Server.AddFilter(self: Server, name: string, callback: ("Reliable" | "U
 - `priority` : `number?` - The priority of the filter (lower = called earlier)
 ### Example
 ```luau
-Server.AddFilter(Remote, "ActionArgCheck", function(player: Player, action: string): boolean
+Server.AddFilter(Remote, "ActionArgCheck", function(requestType: "Reliable" | "Unreliable" | "Request", player: Player, action: string): boolean
 	return type(action) == "string" and VALID_ACTIONS[action] ~= nil --// The action must exist
 end, 10)
 ```

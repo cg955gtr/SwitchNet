@@ -206,7 +206,7 @@ function Client.AddFilter(self: Client, name: string, callback: ("Reliable" | "U
 - `priority` : `number?` - The priority of the filter (lower = called earlier)
 ### Example
 ```luau
-Client.AddFilter(Remote, "ActionArgCheck", function(action: string): boolean
+Client.AddFilter(Remote, "ActionArgCheck", function(requestType: "Reliable" | "Unreliable" | "Request", action: string): boolean
 	return type(action) == "string" and VALID_ACTIONS[action] ~= nil --// The action must exist
 end, 10)
 ```
