@@ -6,53 +6,49 @@
 --!native
 --!optimize 2
 
+const HEADER = "\16\26"
+const HEADER_SIZE = #HEADER
+const BUFFER_SIZE_LIMIT = 2 ^ 21
+
 --// Dependencies
 
-local HEADER = "\16\26"
-local HEADER_SIZE = #HEADER
-local BUFFER_SIZE_LIMIT = 2 ^ 21
+const Typedefs = require("./Typedefs")
 
-export type NBasedArray = { n: number, [number]: any }
+--// Typedefs
 
-export type StreamType = {
-	Name: string,
-	Value: number,
-	Size: number?,
-	GetSize: ((Value: any) -> number)?,
+type NBasedArray = Typedefs.NBasedArray
+type StreamType = Typedefs.StreamType
 
-	Reader: (Buffer: buffer, References: { any }, Pointer: number) -> (any, number),
-	Writer: (Buffer: buffer, References: { any }, Pointer: number, Value: any) -> number,
-}
+--// @module Stream
 
---// @module Bitstream
-
-local Bitstream = {}
+const Stream = {}
 
 
-local types = {} :: { [string]: StreamType }
-local typesFromValue = {} :: { StreamType }
+const types:  { [string]: StreamType } = {}
+const typesFromValue: { StreamType } = {}
 
-Bitstream.Types = types
-Bitstream.TypesFromValue = typesFromValue
+Stream.Types = types
+Stream.TypesFromValue = typesFromValue
 
 
 
-function Bitstream._getSizeOfValues(data: NBasedArray | { any }, length: number?): number
-	local size = 0
+function Stream._getSizeOfValues(data: NBasedArray | { any }, length: number?): number
+	
+	local size: number = 0
 
-	for i = 1, length or (data :: NBasedArray).n or #data do
+	for i: number = 1, length or (data :: NBasedArray).n or #data do
 		size += 1
-		local value = data[i]
+		local value: any = data[i]
 		if value == nil then continue end
 
-		local streamType = types[type(value)] or types[typeof(value)]
+		local streamType: StreamType = types[type(value)] or types[typeof(value)]
 		if streamType then
 			--// OTHER
-			local _size = streamType.Size
+			local _size: number? = streamType.Size
 			if _size then
 				size += _size
 			else
-				local getSize = streamType.GetSize
+				local getSize: ((any) -> number)? = streamType.GetSize
 				if getSize then
 					size += getSize(value)
 				end
@@ -64,85 +60,90 @@ function Bitstream._getSizeOfValues(data: NBasedArray | { any }, length: number?
 	end
 
 	return size
+
 end
 
 
 
-function Bitstream.Read(buff: buffer, references: { any }): NBasedArray
+function Stream.Read(buff: buffer, references: { any }): NBasedArray
+	
 	--// Check buffer size
-	local size = buffer.len(buff)
+	local size: number = buffer.len(buff)
 	assert(size <= BUFFER_SIZE_LIMIT, "buffer too large!")
 
 	--// Verify header
 	assert(buffer.readstring(buff, 0, HEADER_SIZE) == HEADER, "invalid data sequence provided (unknown header)")
 
 	--// Read element count, and check
-	local elementCount = buffer.readu16(buff, HEADER_SIZE)
+	local elementCount: number = buffer.readu16(buff, HEADER_SIZE)
 	assert(elementCount <= (size // 2), "invalid data sequence provided (element size is too high relative to buffer size)")
 
 	--// Now start reading!
-	local pointer = HEADER_SIZE + 2
+	local pointer: number = HEADER_SIZE + 2
 	local streamed = table.create(elementCount) :: NBasedArray
 	streamed.n = elementCount
 
-	for i = 1, elementCount do
-		local valueType = buffer.readu8(buff, pointer)
+	for i: number = 1, elementCount do
+		local valueType: number = buffer.readu8(buff, pointer)
 		pointer += 1
 		if valueType == 0 then continue end
 
-		local Value: any
+		local value: any
 		if valueType == 255 then
 			--// REFERENCE
-			Value = references[buffer.readu16(buff, pointer)]
+			local position: number = buffer.readu16(buff, pointer)
+			value = references[position]
 			pointer += 2
 		else
 			--// OTHER
-			local streamType = typesFromValue[valueType]
-			local result, pointerOffset = streamType.Reader(buff, references, pointer)
-			Value = result
+			local streamType: StreamType = typesFromValue[valueType]
+			local result: any, pointerOffset: number = streamType.Reader(buff, references, pointer)
+			value = result
 			pointer += pointerOffset
 		end
 
-		streamed[i] = Value
+		streamed[i] = value
 	end
 
 	return streamed
+
 end
 
 
 
-function Bitstream.Create(data: NBasedArray, bufferSize: number): (buffer, { any })
-	bufferSize += HEADER_SIZE + 2
+function Stream.Create(data: NBasedArray, bufferSize: number): (buffer, { any })
 
-	local dataCount = data.n
+	bufferSize += HEADER_SIZE + 2 --// account for header+element count too
+
+	local dataCount: number = data.n
 
 	--// Create the buffer!
-	local buff = buffer.create(bufferSize)
-	local references = {}
-	local pointer = HEADER_SIZE + 2
+	local buff: buffer = buffer.create(bufferSize)
+	local references: { any } = table.create(16)
+	local pointer: number = HEADER_SIZE + 2
 
 	--// Write header
 	buffer.writestring(buff, 0, HEADER)
 	buffer.writeu16(buff, HEADER_SIZE, dataCount)
 
-	for i = 1, dataCount do
-		local value = data[i]
+	for i: number = 1, dataCount do
+		local value: any? = data[i]
 		if value == nil then
 			buffer.writeu8(buff, pointer, 0)
 			pointer += 1
 			continue
 		end
 
-		local streamType = types[type(value)] or types[typeof(value)]
+		local streamType: StreamType? = types[type(value)] or types[typeof(value)]
 		if streamType ~= nil then
 			--// OTHER
 			buffer.writeu8(buff, pointer, streamType.Value)
 			pointer += 1
 
-			local pointerOffset = streamType.Writer(buff, references, pointer, value)
+			local pointerOffset: number = streamType.Writer(buff, references, pointer, value)
 			pointer += pointerOffset
 		else
-			local newCount = #references + 1
+			local newCount: number = #references + 1
 			buffer.writeu8(buff, pointer, 255)
 			buffer.writeu16(buff, pointer + 1, newCount)
 
@@ -152,13 +153,15 @@ function Bitstream.Create(data: NBasedArray, bufferSize: number): (buffer, { any
 	end
 
 	return buff, references
+
 end
+
 
 
 --// Init types
 local typeModules = {}
 
-for _, module in script:WaitForChild("Types"):GetChildren() do
+for _, module in script.Parent:WaitForChild("Types"):GetChildren() do
 	if not module:IsA("ModuleScript") then continue end
 
 	local success, result = pcall(require, module :: ModuleScript)
@@ -166,12 +169,14 @@ for _, module in script:WaitForChild("Types"):GetChildren() do
 	if success then
 		table.insert(typeModules, { Name = module.Name, Module = result })
 		if result.Init then
-			task.spawn(result.Init, Bitstream)
+			task.spawn(result.Init, Stream)
 		end
 	else
 		warn(`Failed to load compression type {module.Name}, Error: {result}`)
 	end
 end
+
+
 
 --// Sort by name, so we can mandate a fixed order between server and client
 table.sort(typeModules, function(a: { Name: string, Module: any }, b: { Name: string, Module: any }): boolean
@@ -197,4 +202,6 @@ for index, module in typeModules do
 	typesFromValue[index] = streamType
 end
 
-return Bitstream
+
+
+return Stream

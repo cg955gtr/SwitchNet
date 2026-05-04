@@ -6,65 +6,56 @@
 --!native
 --!optimize 2
 
-local ACTIVE_REMOTES = {}
+const DEBUG_PROFILING: boolean = true
+const ACTIVE_REMOTES: { [string]: boolean } = {}
 
 --// Services
 
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TestService = game:GetService("TestService")
+const RunService = game:GetService("RunService")
+const ReplicatedStorage = game:GetService("ReplicatedStorage")
+const TestService = game:GetService("TestService")
 
 --// Dependencies
 
-local Bitstream = require("./Bitstream")
+const Stream = require("./Stream")
+const Typedefs = require("./Typedefs")
 
-local Create = Bitstream.Create
-local Read = Bitstream.Read
-local GetSizeOfValues = Bitstream._getSizeOfValues
+const createStream = Stream.Create
+const readStream = Stream.Read
+const getStreamSizeOfValues = Stream._getSizeOfValues
 
-local function VerifyNetworkPacketIntegrity(packet: NetworkPacket): boolean
+local function verifyNetworkPacket(packet: NetworkPacket): boolean
 	return packet and type(packet) == "table" and type(packet.Data) == "buffer" and type(packet.References) == "table"
+end
+
+
+local function profilebegin(label: string): ()
+	if DEBUG_PROFILING then
+		debug.profilebegin(label)
+	end
+end
+
+local function profileend(): ()
+	if DEBUG_PROFILING then
+		debug.profileend()
+	end
 end
 
 --// Typedefs
 
-type NBasedArray = Bitstream.NBasedArray
+type Client = Typedefs.Client
 
-type NetworkPacket = {
-	Data: buffer,
-	References: { any },
-}
-
-export type Client = {
-	Name: string,
-
-	_onClientInvokeCallback: ((...any) -> ...any)?,
-
-	_onClientEventCallbacks: { [string]: (...any) -> () },
-	_onClientEventCallbacksUnr: { [string]: (...any) -> () },
-
-	_waitingThreads: { [thread]: boolean },
-	_waitingThreadsUnr: { [thread]: boolean },
-
-	_sendStack: { NetworkPacket },
-	_sendStackUnr: { NetworkPacket },
-
-	_remoteContainer: Folder,
-	
-	_remoteEvent: RemoteEvent,
-	_unrRemoteEvent: UnreliableRemoteEvent,
-	_remoteFunction: RemoteFunction,
-
-	_onClientEvent: RBXScriptConnection,
-	_onUnrClientEvent: RBXScriptConnection,
-	_replicationHandler: RBXScriptConnection,
-}
+type NBasedArray = Typedefs.NBasedArray
+type NetworkPacket = Typedefs.NetworkPacket
 
 --// @module Client
 
-local Client = {}
+const Client = {}
+
+
 
 function Client.new(name: string): Client
+	
 	assert(ACTIVE_REMOTES[name] == nil, `Remote bridge '{name}' already exists!`)
 	assert(RunService:IsClient(), "This is a client-only function!")
 
@@ -102,103 +93,113 @@ function Client.new(name: string): Client
 	} :: Client
 
 
-	local _sendStack = self._sendStack
-	local _sendStackUnr = self._sendStackUnr
+	local sendStack: { NetworkPacket } = self._sendStack
+	local sendStackUnr: { NetworkPacket } = self._sendStackUnr
 
-	local onClientEventCallbacks = self._onClientEventCallbacks
-	local onClientEventCallbacksUnr = self._onClientEventCallbacksUnr
-	local waitingThreads = self._waitingThreads
-	local waitingThreadsUnr = self._waitingThreadsUnr
+	local onClientEventCallbacks: { [string]: (...any) -> () } = self._onClientEventCallbacks
+	local onClientEventCallbacksUnr: { [string]: (...any) -> () } = self._onClientEventCallbacksUnr
+	local waitingThreads: { [thread]: boolean } = self._waitingThreads
+	local waitingThreadsUnr: { [thread]: boolean } = self._waitingThreadsUnr
 
 
 	--// Internal functions for firing callbacks without using unpack() too many times
-	local function _fireCallbacks(...: any)
-		for thread in waitingThreads do
+	local function fireCallbacks(...: any)
+
+		for thread: thread in waitingThreads do
 			coroutine.resume(thread, ...)
 		end
-
 		table.clear(waitingThreads)
 
-		for name, callback in onClientEventCallbacks do
-			local success, result = pcall(task.spawn, callback, ...)
+		for name: string, callback: (...any) -> () in onClientEventCallbacks do
+			local success: boolean, result: thread | string = pcall(task.spawn, callback, ...)
 			if not success then
-				TestService:Error(`SwitchNet.Client '{self.Name}' Callback '{name}' Error:\n{result}`)
+				TestService:Error(`SwitchNet.Client '{self.Name}' Callback '{name}' Error:\n{result :: string}`)
 			end
 		end
+
 	end
 
-	local function _fireCallbacksUnr(...: any)
-		for thread in waitingThreadsUnr do
+	local function fireCallbacksUnr(...: any)
+		
+		for thread: thread in waitingThreadsUnr do
 			coroutine.resume(thread, ...)
 		end
-
 		table.clear(waitingThreadsUnr)
 
-		for name, callback in onClientEventCallbacksUnr do
-			local Success: boolean, Error: any = pcall(task.spawn, callback, ...)
-			if not Success then
-				TestService:Error(`SwitchNet.Client '{self.Name}' (UNRELIABLE) Callback '{name}' Error:\n{Error}`)
+		for name: string, callback: (...any) -> () in onClientEventCallbacksUnr do
+			local success: boolean, result: thread | string = pcall(task.spawn, callback, ...)
+			if not success then
+				TestService:Error(`SwitchNet.Client '{self.Name}' (UNRELIABLE) Callback '{name}' Error:\n{result :: string}`)
 			end
 		end
+		
 	end
 
+	
 
 	self._onClientEvent = self._remoteEvent.OnClientEvent:Connect(function(incomingData: { NetworkPacket })
+		
 		if type(incomingData) ~= "table" then return end
 		if not next(onClientEventCallbacks) and not next(waitingThreads) then return end
 
-		debug.profilebegin("SwitchNet.Client Incoming Packets Job")
+		profilebegin("SwitchNet.Client Incoming Packets Job")
 
 		for _, packet in incomingData do
-			if not VerifyNetworkPacketIntegrity(packet) then return end
+			if not verifyNetworkPacket(packet) then return end
 
-			local args = Read(packet.Data, packet.References)
-			_fireCallbacks(table.unpack(args, 1, args.n))
+			local args: NBasedArray = readStream(packet.Data, packet.References)
+			fireCallbacks(table.unpack(args, 1, args.n))
 		end
 
-		debug.profileend()
+		profileend()
+
 	end)
 
 	self._onUnrClientEvent = self._unrRemoteEvent.OnClientEvent:Connect(function(IncomingData: { NetworkPacket })
+		
 		if type(IncomingData) ~= "table" then return end
 		if not next(onClientEventCallbacksUnr) and not next(waitingThreadsUnr) then return end
 
-		debug.profilebegin("SwitchNet.Client Incoming Packets Job (Unreliable)")
+		profilebegin("SwitchNet.Client Incoming Packets Job (Unreliable)")
 
 		for _, packet in IncomingData do
-			if not VerifyNetworkPacketIntegrity(packet) then return end
+			if not verifyNetworkPacket(packet) then return end
 
-			local args = Read(packet.Data, packet.References)
-			_fireCallbacksUnr(table.unpack(args, 1, args.n))
+			local args: NBasedArray = readStream(packet.Data, packet.References)
+			fireCallbacksUnr(table.unpack(args, 1, args.n))
 		end
 
-		debug.profileend()
+		profileend()
+
 	end)
 
 
 	
 	self._replicationHandler = RunService.PostSimulation:Connect(function()
-		if #_sendStack > 0 then
-			remote:FireServer(_sendStack)
-			table.clear(_sendStack)
+		
+		if #sendStack > 0 then
+			remote:FireServer(sendStack)
+			table.clear(sendStack)
 		end
 
-		if #_sendStackUnr > 0 then
-			unreliableRemote:FireServer(_sendStackUnr)
-			table.clear(_sendStackUnr)
+		if #sendStackUnr > 0 then
+			unreliableRemote:FireServer(sendStackUnr)
+			table.clear(sendStackUnr)
 		end
+
 	end)
 
 
 
 	self._remoteFunction.OnClientInvoke = function(incomingData: NetworkPacket): NetworkPacket?
+		
 		if not self._onClientInvokeCallback then return nil end
 
-		local results: Bitstream.NBasedArray
+		local results: NBasedArray
 		if incomingData then
-			if not VerifyNetworkPacketIntegrity(incomingData) then return end
+			if not verifyNetworkPacket(incomingData) then return nil end
 
-			local success, args = pcall(Read, incomingData.Data, incomingData.References)
+			local success: boolean, args: NBasedArray = pcall(readStream, incomingData.Data, incomingData.References)
 			if success then
 				results = table.pack(pcall(self._onClientInvokeCallback, table.unpack(args, 1, args.n)))
 				results.n -= 1
@@ -210,19 +211,33 @@ function Client.new(name: string): Client
 
 		if not results or results.n == 0 then return nil end
 		
-		local size = GetSizeOfValues(results)
-		local success, buff, references = pcall(Create, results, size)
+		local size: number = getStreamSizeOfValues(results)
+		local success: boolean, buff: buffer, references: { any } = pcall(createStream, results, size)
 
 		if not success then return nil end
 
 		return { Data = buff, References = references }
+
 	end
 
+
+
 	return self
+
 end
 
 function Client.Destroy(self: Client)
+
 	ACTIVE_REMOTES[self.Name] = nil
+
+	--// Free yielding threads (in-case they are still present)
+	for thread: thread in self._waitingThreads do
+		coroutine.resume(thread, nil)
+	end
+
+	for thread: thread in self._waitingThreadsUnr do
+		coroutine.resume(thread, nil)
+	end
 	
 	self._replicationHandler:Disconnect()
 	self._onUnrClientEvent:Disconnect()
@@ -235,18 +250,19 @@ function Client.Destroy(self: Client)
 	table.clear(self)
 
 	self = nil :: never
+
 end
 
 
 
 function Client.Wait(self: Client): ...any
-	local thread = coroutine.running()
+	local thread: thread = coroutine.running()
 	self._waitingThreads[thread] = true
 	return coroutine.yield()
 end
 
 function Client.WaitUnreliable(self: Client): ...any
-	local thread = coroutine.running()
+	local thread: thread = coroutine.running()
 	self._waitingThreadsUnr[thread] = true
 	return coroutine.yield()
 end
@@ -278,9 +294,9 @@ end
 
 
 function Client.FireServer(self: Client, ...: any)
-	local data = table.pack(...)
-	local size = GetSizeOfValues(data)
-	local buff, references = Create(data, size)
+	local data: NBasedArray = table.pack(...)
+	local size: number = getStreamSizeOfValues(data)
+	local buff: buffer, references: { any } = createStream(data, size)
 	table.insert(self._sendStack, {
 		Data = buff,
 		References = references,
@@ -288,9 +304,9 @@ function Client.FireServer(self: Client, ...: any)
 end
 
 function Client.FireServerUnreliable(self: Client, ...: any)
-	local data = table.pack(...)
-	local size = GetSizeOfValues(data)
-	local buff, references = Create(data, size)
+	local data: NBasedArray = table.pack(...)
+	local size: number = getStreamSizeOfValues(data)
+	local buff: buffer, references: { any } = createStream(data, size)
 	table.insert(self._sendStackUnr, {
 		Data = buff,
 		References = references,
@@ -300,12 +316,13 @@ end
 
 
 function Client.InvokeServer(self: Client, ...: any): ...any
-	local sendData = table.pack(...)
-	local bufferSize = GetSizeOfValues(sendData)
-	local buff, references = Create(sendData, bufferSize)
+	
+	local sendData: NBasedArray = table.pack(...)
+	local size: number = getStreamSizeOfValues(sendData)
+	local buff: buffer, references: { any } = createStream(sendData, size)
 	local responsePacket: NetworkPacket
 
-	local success, result = pcall(function()
+	local success: boolean, result: any = pcall(function()
 		responsePacket = self._remoteFunction:InvokeServer({
 			Data = buff,
 			References = references,
@@ -318,10 +335,13 @@ function Client.InvokeServer(self: Client, ...: any): ...any
 	end
 
 	if responsePacket == nil then return nil end
-	if not VerifyNetworkPacketIntegrity(responsePacket) then return nil end
+	if not verifyNetworkPacket(responsePacket) then return nil end
 
-	local response = Read(responsePacket.Data, responsePacket.References)
+	local response: NBasedArray = readStream(responsePacket.Data, responsePacket.References)
 	return table.unpack(response, 1, response.n)
+
 end
+
+
 
 return Client
