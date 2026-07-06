@@ -5,16 +5,16 @@
 
 ## Client.new
 ```luau
-function Client.new(Name: string): Client
+function Client.new(name: string): Client
 ```
 > Creates a new SwitchNet client instance with the given name.
 
 > **NOTE:** Do not use duplicate names for remote bridges, as this will throw an error if the given remote bridge with that name exists already. Also ensure that nothing in ReplicatedStorage conflicts with the given name. (e.g. Another instance with the same name)
 ### Parameters
-`Name` : `string` - The name of the remote instance.
+`name` : `string` - The name of the remote instance.
 ### Example
 ```luau
-local Remote: SwitchNet.Client = Client.new("Example123")
+local remote: SwitchNet.Client = SwitchNet.Client.new("Example123")
 ```
 
 ## Client.Destroy
@@ -37,9 +37,9 @@ function Client.Wait(self: Client): ...any
 - `self` : `Client` - The SwitchNet Client instance.
 ### Example
 ```luau
-local Time: number = Client.Wait(Remote)
+local timestamp: number = SwitchNet.Client.Wait(remote)
 
-print(`The server sent their timestamp: {Time}`)
+print(`The server sent their timestamp: {timestamp}`)
 ```
 
 ## Client.WaitUnreliable
@@ -52,28 +52,27 @@ function Client.WaitUnreliable(self: Client): ...any
 - `self` : `Client` - The SwitchNet Client instance.
 ### Example
 ```luau
-local Time: number = Client.WaitUnreliable(Remote)
+local timestamp: number = SwitchNet.Client.WaitUnreliable(remote)
 
-print(`(Unreliable) The server sent their timestamp: {Time}`)
+print(`(Unreliable) The server sent their timestamp: {timestamp}`)
 ```
 
 
 
 ## Client.Connect
 ```luau
-function Client.Connect(self: Client, Name: string, Function: (...any) -> (), Unreliable: boolean?): ()
+function Client.Connect(self: Client, name: string, callback: (...any) -> ()): ()
 ```
 > Creates a new remote input callback with the given name, and function to use.
 
-> **NOTE:** To listen to UnreliableRemoteEvent inputs, set the `Unreliable` parameter to `true`.
+> **NOTE:** To listen to UnreliableRemoteEvent inputs, set the `unreliable` parameter to `true`.
 ### Parameters
 - `self` : `Client` - The SwitchNet Client instance.
-- `Name` : `string` - The name of the callback.
-- `Function` : `(...any) -> ()` - The function to use in the callback.
-- `Unreliable` : `boolean?` **(optional)** - Whether the callback should listen to UnreliableRemoteEvent requests instead of standard RemoteEvent requests.
+- `name` : `string` - The name of the callback.
+- `callback` : `(...any) -> ()` - The function to use in the callback.
 ### Example
 ```luau
-Client.Connect(Remote, "Main", function(...: any)
+SwitchNet.Client.Connect(remote, "Main", function(...: any)
 	--// ^ Basically as if you did .OnServerEvent!
 	print(`The server sent us data! Data:`, ...)
 end)
@@ -82,16 +81,16 @@ end)
 
 ## Client.ConnectUnreliable
 ```luau
-function Client.ConnectUnreliable(self: Client, Name: string, Function: (...any) -> ()): ()
+function Client.ConnectUnreliable(self: Client, name: string, callback: (...any) -> ()): ()
 ```
 > Creates a new (unreliable) remote input callback with the given name, and function to use.
 ### Parameters
 - `self` : `Client` - The SwitchNet Client instance.
-- `Name` : `string` - The name of the callback.
-- `Function` : `(...any) -> ()` - The function to use in the callback.
+- `name` : `string` - The name of the callback.
+- `callback` : `(...any) -> ()` - The function to use in the callback.
 ### Example
 ```luau
-Client.ConnectUnreliable(Remote, "Main", function(...: any)
+SwitchNet.Client.ConnectUnreliable(remote, "Main", function(...: any)
 	--// ^ Basically as if you did .OnServerEvent!
 	print(`The server sent us data! Data:`, ...)
 end)
@@ -101,46 +100,46 @@ end)
 
 ## Client.Disconnect
 ```luau
-function Client.Disconnect(self: Client, Name: string): ()
+function Client.Disconnect(self: Client, name: string): ()
 ```
 > Removes the current remote input callback with the given name (if it exists). Use this if you don't want the given callback to listen to remote calls anymore.
 ### Parameters
 - `self` : `Client` - The SwitchNet Client instance.
-- `Name` : `string` - The name of the callback.
+- `name` : `string` - The name of the callback.
 ### Example
 ```luau
-Client.Disconnect(Remote, "Main")
+SwitchNet.Client.Disconnect(remote, "Main")
 ```
 
 ## Client.DisconnectUnreliable
 ```luau
-function Client.DisconnectUnreliable(self: Client, Name: string): ()
+function Client.DisconnectUnreliable(self: Client, name: string): ()
 ```
 > Removes the current (unreliable) remote input callback with the given name (if it exists). Use this if you don't want the given callback to listen to remote calls anymore.
 ### Parameters
 - `self` : `Client` - The SwitchNet Client instance.
-- `Name` : `string` - The name of the callback.
+- `name` : `string` - The name of the callback.
 ### Example
 ```luau
-Client.DisconnectUnreliable(Remote, "Main")
+SwitchNet.Client.DisconnectUnreliable(remote, "Main")
 ```
 
 
 
 ## Client.SetOnInvoke
 ```luau
-function Client.SetOnInvoke(self: Client, Function: (...any) -> ...any): ()
+function Client.SetOnInvoke(self: Client, callback: (...any) -> ...any): ()
 ```
 > Sets the current RemoteFunction callback function. Use this how you would use `RemoteFunction.OnClientInvoke = function_here`.
 ### Parameters
 - `self` : `Client` - The SwitchNet Client instance.
-- `Function` : `(Player, ...any) -> ...any` - The function to use.
+- `callback` : `(Player, ...any) -> ...any` - The function to use.
 ### Example
 ```luau
-Client.SetOnInvoke(Remote, function(RequestType: string): any
-	if RequestType == "HELLO" then
+SwitchNet.Client.SetOnInvoke(remote, function(requestType: "HELLO" | "BYE"): any
+	if requestType == "HELLO" then
 		return "Hello!"
-	elseif RequestType == "BYE" then
+	elseif requestType == "BYE" then
 		return "Goodbye!"
 	end
 
@@ -158,20 +157,20 @@ function Client.FireServer(self: Client, ...: any): ()
 - `...` : `any` - The data to send.
 ### Example
 ```luau
-Client.FireServer(Remote, "Hello from the client!")
+SwitchNet.Client.FireServer(remote, "Hello from the client!")
 ```
 
-## Client.FireClientUnreliable
+## Client.FireServerUnreliable
 ```luau
-function Client.FireClientUnreliable(self: Client, ...: any): ()
+function Client.FireServerUnreliable(self: Client, ...: any): ()
 ```
-> Sends the given data to the given player over the remote bridge via. UnreliableRemoteEvent. Use this how you would use `UnreliableRemoteEvent:FireServer(...)`
+> Sends the given data to the server over the remote bridge via. UnreliableRemoteEvent. Use this how you would use `UnreliableRemoteEvent:FireServer(...)`
 ### Parameters
 - `self` : `Client` - The SwitchNet Client instance.
 - `...` : `any` - The data to send.
 ### Example
 ```luau
-Client.FireServerUnreliable(Remote, "Hello from the client! (Unreliable)")
+SwitchNet.Client.FireServerUnreliable(remote, "Hello from the client! (Unreliable)")
 ```
 
 ## Client.InvokeServer
@@ -186,10 +185,10 @@ function Client.InvokeServer(self: Client, ...: any): ...any
 - `...` : `any` - The data to send.
 ### Example
 ```luau
-local Time: number = Client.InvokeServer(Remote, "GetLastUpdateTime")
-local TimeNow: number = workspace:GetServerTimeNow()
+local updateTime: number = SwitchNet.Client.InvokeServer(remote, "GetLastUpdateTime")
+local timeNow: number = workspace:GetServerTimeNow()
 
-print(`It has been ~{math.round(TimeNow - Time)} seconds since the last update.`)
+print(`It has been ~{math.round(timeNow - updateTime)} seconds since the last update.`)
 ```
 
 
@@ -206,7 +205,7 @@ function Client.AddFilter(self: Client, name: string, callback: ("Reliable" | "U
 - `priority` : `number?` - The priority of the filter (lower = called earlier)
 ### Example
 ```luau
-Client.AddFilter(Remote, "ActionArgCheck", function(requestType: "Reliable" | "Unreliable" | "Request", action: string): boolean
+SwitchNet.Client.AddFilter(remote, "ActionArgCheck", function(requestType: "Reliable" | "Unreliable" | "Request", action: string): boolean
 	return type(action) == "string" and VALID_ACTIONS[action] ~= nil --// The action must exist
 end, 10)
 ```
@@ -221,7 +220,7 @@ function Client.RemoveFilter(self: Client, name: string): ()
 - `name` : `string` - The name of the filter.
 ### Example
 ```luau
-Client.RemoveFilter(Remote, "ActionArgCheck")
+SwitchNet.Client.RemoveFilter(remote, "ActionArgCheck")
 ```
 
 
@@ -237,7 +236,7 @@ function Client.AddPreProcessFilter(self: Client, name: string, callback: ("Reli
 - `priority` : `number?` - The priority of the filter (lower = called earlier)
 ### Example
 ```luau
-Client.AddPreProcessFilter(Remote, "EnabledCheck", function(): boolean
+SwitchNet.Client.AddPreProcessFilter(remote, "EnabledCheck", function(): boolean
 	return configuration.isRemoteBridgeEnabled
 end, 5)
 ```
@@ -252,5 +251,5 @@ function Client.RemovePreProcessFilter(self: Client, name: string): ()
 - `name` : `string` - The name of the filter.
 ### Example
 ```luau
-Client.RemovePreProcessFilter(Remote, "EnabledCheck")
+SwitchNet.Client.RemovePreProcessFilter(remote, "EnabledCheck")
 ```

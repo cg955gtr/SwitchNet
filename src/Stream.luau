@@ -24,7 +24,7 @@ type StreamType = Typedefs.StreamType
 const Stream = {}
 
 
-const types:  { [string]: StreamType } = {}
+const types: { [string]: StreamType } = {}
 const typesFromValue: { StreamType } = {}
 
 Stream.Types = types

@@ -183,7 +183,7 @@ function Server.new(name: string): Server
 		
 		for _, packet: NetworkPacket in incomingData do
 			if not verifyNetworkPacket(packet) then return end
-			if not self._preProcessFilter:Check("Reliable", player, packet.Data, packet.References) then return end
+			if not self._preProcessFilter:Check("Reliable" :: RequestType, player, packet.Data, packet.References) then return end
 			
 			local args: NBasedArray = readStream(packet.Data, packet.References)
 			fireCallbacks(player, table.unpack(args, 1, args.n))
@@ -202,7 +202,7 @@ function Server.new(name: string): Server
 
 		for _, packet: NetworkPacket in incomingData do
 			if not verifyNetworkPacket(packet) then return end
-			if not self._preProcessFilter:Check("Unreliable", player, packet.Data, packet.References) then return end
+			if not self._preProcessFilter:Check("Unreliable" :: RequestType, player, packet.Data, packet.References) then return end
 			
 			local args: NBasedArray = readStream(packet.Data, packet.References)
 			fireCallbacksUnr(player, table.unpack(args, 1, args.n))
@@ -245,13 +245,14 @@ function Server.new(name: string): Server
 		
 		if not self._onServerInvokeCallback then return nil end
 		if not verifyNetworkPacket(incomingData) then return nil end
-		if not self._preProcessFilter:Check("Request", player, incomingData.Data, incomingData.References) then return nil end
+		if not self._preProcessFilter:Check("Request" :: RequestType, player, incomingData.Data, incomingData.References) then return nil end
 		
 		local results: NBasedArray
 		local success: boolean, args: NBasedArray = pcall(readStream, incomingData.Data, incomingData.References)
 		if success then
 			results = table.pack(pcall(function(player: Player, ...: any)
-				if not self._filter:Check("Request", player, ...) then return nil end
+				if not self._onServerInvokeCallback then return nil end --// double checked to avoid type error
+				if not self._filter:Check("Request" :: RequestType, player, ...) then return nil end
 				return self._onServerInvokeCallback(player, ...)
 			end, player, table.unpack(args, 1, args.n)))
 
@@ -526,7 +527,7 @@ function Server.InvokeClient(self: Server, player: Player, ...: any): ...any
 	local buff: buffer, references: { any } = createStream(sendData, size)
 	local responsePacket: NetworkPacket
 
-	local success: boolean, result: string? = pcall(function()
+	local success: boolean, result: any = pcall(function()
 		responsePacket = self._remoteFunction:InvokeClient(player, {
 			Data = buff,
 			References = references,

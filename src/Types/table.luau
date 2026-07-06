@@ -6,21 +6,28 @@
 --!native
 --!optimize 2
 
---// ^ not proper, but it works
+const Typedefs = require("../Typedefs")
 
-local Bitstream
+--// Typedefs
 
-local GetSizeOfValues
-local Types
-local TypesFromValue
+type StreamType = Typedefs.StreamType
+type NBasedArray = Typedefs.NBasedArray
+
+
+
+local Stream: any
+
+local GetSizeOfValues: (data: NBasedArray | { any }, length: number?) -> number
+local Types: { [string]: StreamType }
+local TypesFromValue: { StreamType }
 
 return {
-	Init = function(...)
-		Bitstream = ...
+	Init = function(...: any)
+		Stream = ...
 		
-		GetSizeOfValues = Bitstream._getSizeOfValues
-		Types = Bitstream.Types
-		TypesFromValue = Bitstream.TypesFromValue
+		GetSizeOfValues = Stream._getSizeOfValues
+		Types = Stream.Types
+		TypesFromValue = Stream.TypesFromValue
 	end,
 
 	GetSize = function(Value: { [any]: any }): number

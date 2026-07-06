@@ -27,17 +27,14 @@
 ]=]
 
 --!strict
---!native
---!optimize 2
 
-const VERSION = "v1.4.0"
-const PRINT_OUTPUT_MESSAGE = true
+const VERSION: string = "v1.4.1"
+const PRINT_OUTPUT_MESSAGE: boolean = true
 
 --// Services
 
-const LogService = game:GetService("LogService")
 const RunService = game:GetService("RunService")
-const TestService = game:GetService("TestService")
+const LogService = game:GetService("LogService")
 
 --// Dependencies
 
@@ -52,31 +49,27 @@ export type Client = Typedefs.Client
 
 --// @module SwitchNet
 
-const SwitchNet = {
+const SwitchNet = table.freeze({
 	Server = Server,
 	Client = Client,
-}
+})
 
 
 
 
 if PRINT_OUTPUT_MESSAGE then
-	task.spawn(function()
-		--// Print message
-		--// Check if it exists already too, so if theres several dependencies, it won't add extras
-		local runContext = if RunService:IsClient() then "Client" else "Server"
-		local message = `SwitchNet ({runContext}) - {VERSION} loaded successfully! Created by 8ch99.`
+	--// Print message
+	--// Check if it exists already too, so if theres several dependencies, it won't add extras
+	local runContext: "Client" | "Server" = if RunService:IsClient() then "Client" else "Server"
+	local message = `SwitchNet {VERSION} - ({runContext}) initialized - @8ch99`
 		
-		for _, log in LogService:GetLogHistory() do
-			if log.message == message then
-				return
-			end
-		end
-		
-		TestService:Message(message)
-	end)
+	for _, log in LogService:GetLogHistory() do
+		if log.message == message then return end
+	end
+
+	print(message)
 end
 
 
 
-return table.freeze(SwitchNet)
+return SwitchNet

@@ -155,7 +155,7 @@ function Client.new(name: string): Client
 
 		for _, packet in incomingData do
 			if not verifyNetworkPacket(packet) then return end
-			if not self._preProcessFilter:Check("Reliable", packet.Data, packet.References) then return end
+			if not self._preProcessFilter:Check("Reliable" :: RequestType, packet.Data, packet.References) then return end
 
 			local args: NBasedArray = readStream(packet.Data, packet.References)
 			fireCallbacks(table.unpack(args, 1, args.n))
@@ -174,7 +174,7 @@ function Client.new(name: string): Client
 
 		for _, packet in IncomingData do
 			if not verifyNetworkPacket(packet) then return end
-			if not self._preProcessFilter:Check("Unreliable", packet.Data, packet.References) then return end
+			if not self._preProcessFilter:Check("Unreliable" :: RequestType, packet.Data, packet.References) then return end
 
 			local args: NBasedArray = readStream(packet.Data, packet.References)
 			fireCallbacksUnr(table.unpack(args, 1, args.n))
@@ -206,7 +206,7 @@ function Client.new(name: string): Client
 		
 		if not self._onClientInvokeCallback then return nil end
 		if not verifyNetworkPacket(incomingData) then return nil end
-		if not self._preProcessFilter:Check("Request", incomingData.Data, incomingData.References) then return nil end
+		if not self._preProcessFilter:Check("Request" :: RequestType, incomingData.Data, incomingData.References) then return nil end
 
 		local results: NBasedArray
 		if incomingData then
@@ -215,7 +215,8 @@ function Client.new(name: string): Client
 			local success: boolean, args: NBasedArray = pcall(readStream, incomingData.Data, incomingData.References)
 			if success then
 				results = table.pack(pcall(function(...: any)
-					if not self._filter:Check("Request", ...) then return nil end
+					if not self._onClientInvokeCallback then return nil end --// double checked to avoid type error
+					if not self._filter:Check("Request" :: RequestType, ...) then return nil end
 					return self._onClientInvokeCallback(...)
 				end, table.unpack(args, 1, args.n)))
 
