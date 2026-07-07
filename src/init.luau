@@ -28,7 +28,7 @@
 
 --!strict
 
-const VERSION: string = "v1.4.1"
+const VERSION: string = "v1.4.2"
 const PRINT_OUTPUT_MESSAGE: boolean = true
 
 --// Services
@@ -80,7 +80,7 @@ if PRINT_OUTPUT_MESSAGE then
 	if not hasDuplicateMessage then
 		print(message)
 	end
-	
+
 end
 
 

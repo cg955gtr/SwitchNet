@@ -6,9 +6,9 @@
 --!native
 --!optimize 2
 
-const HEADER = "\16\26"
-const HEADER_SIZE = #HEADER
-const BUFFER_SIZE_LIMIT = 2 ^ 21
+const HEADER: string = "\16\26"
+const HEADER_SIZE: number = #HEADER
+const BUFFER_SIZE_LIMIT: number = 2 ^ 21
 
 --// Dependencies
 
@@ -18,6 +18,7 @@ const Typedefs = require("./Typedefs")
 
 type NBasedArray = Typedefs.NBasedArray
 type StreamType = Typedefs.StreamType
+type NetworkPacket = Typedefs.NetworkPacket
 
 --// @module Stream
 
@@ -32,8 +33,8 @@ Stream.TypesFromValue = typesFromValue
 
 
 
-function Stream._getSizeOfValues(data: NBasedArray | { any }, length: number?): number
-	
+const function getStreamSizeOfValues(data: NBasedArray | { any }, length: number?): number
+
 	local size: number = 0
 
 	for i: number = 1, length or (data :: NBasedArray).n or #data do
@@ -63,9 +64,7 @@ function Stream._getSizeOfValues(data: NBasedArray | { any }, length: number?): 
 
 end
 
-
-
-function Stream.Read(buff: buffer, references: { any }): NBasedArray
+const function readStream(buff: buffer, references: { any }): NBasedArray
 	
 	--// Check buffer size
 	local size: number = buffer.len(buff)
@@ -109,9 +108,7 @@ function Stream.Read(buff: buffer, references: { any }): NBasedArray
 
 end
 
-
-
-function Stream.Create(data: NBasedArray, bufferSize: number): (buffer, { any })
+const function createStream(data: NBasedArray, bufferSize: number): (buffer, { any })
 
 	bufferSize += HEADER_SIZE + 2 --// account for header+element count too
 
@@ -155,6 +152,30 @@ function Stream.Create(data: NBasedArray, bufferSize: number): (buffer, { any })
 	return buff, references
 
 end
+
+
+const function createStreamPacket(data: NBasedArray): NetworkPacket
+	local size: number = getStreamSizeOfValues(data)
+	local buff: buffer, references: { any } = createStream(data, size)
+	local packet: NetworkPacket = {
+		Data = buff,
+		References = references,
+	}
+
+	return packet
+end
+
+const function createStreamPacketFromArgs(...: any): NetworkPacket
+	return createStreamPacket(table.pack(...))
+end
+
+
+
+Stream._getSizeOfValues = getStreamSizeOfValues
+Stream.Read = readStream
+Stream.Create = createStream
+Stream.CreatePacket = createStreamPacket
+Stream.CreatePacketFromArgs = createStreamPacketFromArgs
 
 
 

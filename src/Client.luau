@@ -21,9 +21,9 @@ const Stream = require("./Stream")
 const Typedefs = require("./Typedefs")
 const FilterContainer = require("./FilterContainer")
 
-const createStream = Stream.Create
 const readStream = Stream.Read
-const getStreamSizeOfValues = Stream._getSizeOfValues
+const createPacket = Stream.CreatePacket
+const createPacketFromArgs = Stream.CreatePacketFromArgs
 
 local function verifyNetworkPacket(packet: NetworkPacket): boolean
 	return packet and type(packet) == "table" and type(packet.Data) == "buffer" and type(packet.References) == "table"
@@ -228,13 +228,11 @@ function Client.new(name: string): Client
 		end
 
 		if not results or results.n == 0 then return nil end
-		
-		local size: number = getStreamSizeOfValues(results)
-		local success: boolean, buff: buffer, references: { any } = pcall(createStream, results, size)
 
-		if not success then return nil end
+		local createSuccess: boolean, packet: NetworkPacket = pcall(createPacket, results)
+		if not createSuccess then return nil end
 
-		return { Data = buff, References = references }
+		return packet
 
 	end
 
@@ -315,39 +313,24 @@ end
 
 
 function Client.FireServer(self: Client, ...: any)
-	local data: NBasedArray = table.pack(...)
-	local size: number = getStreamSizeOfValues(data)
-	local buff: buffer, references: { any } = createStream(data, size)
-	table.insert(self._sendStack, {
-		Data = buff,
-		References = references,
-	})
+	local packet: NetworkPacket = createPacketFromArgs(...)
+	table.insert(self._sendStack, packet)
 end
 
 function Client.FireServerUnreliable(self: Client, ...: any)
-	local data: NBasedArray = table.pack(...)
-	local size: number = getStreamSizeOfValues(data)
-	local buff: buffer, references: { any } = createStream(data, size)
-	table.insert(self._sendStackUnr, {
-		Data = buff,
-		References = references,
-	})
+	local packet: NetworkPacket = createPacketFromArgs(...)
+	table.insert(self._sendStackUnr, packet)
 end
 
 
 
 function Client.InvokeServer(self: Client, ...: any): ...any
 	
-	local sendData: NBasedArray = table.pack(...)
-	local size: number = getStreamSizeOfValues(sendData)
-	local buff: buffer, references: { any } = createStream(sendData, size)
+	local packet: NetworkPacket = createPacketFromArgs(...)
 	local responsePacket: NetworkPacket
 
 	local success: boolean, result: any = pcall(function()
-		responsePacket = self._remoteFunction:InvokeServer({
-			Data = buff,
-			References = references,
-		})
+		responsePacket = self._remoteFunction:InvokeServer(packet)
 	end)
 
 	if not success then
