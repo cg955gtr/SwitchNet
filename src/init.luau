@@ -58,16 +58,29 @@ const SwitchNet = table.freeze({
 
 
 if PRINT_OUTPUT_MESSAGE then
-	--// Print message
-	--// Check if it exists already too, so if theres several dependencies, it won't add extras
+	
 	local runContext: "Client" | "Server" = if RunService:IsClient() then "Client" else "Server"
-	local message = `SwitchNet {VERSION} - ({runContext}) initialized - @8ch99`
-		
-	for _, log in LogService:GetLogHistory() do
-		if log.message == message then return end
+	local message = `SwitchNet {VERSION} - {runContext} initialized - @8ch99`
+	local logHistory = LogService:GetLogHistory() :: {
+		{
+			timestamp: number,
+			message: string,
+			messageType: Enum.MessageType,
+		}
+	}
+	
+	local hasDuplicateMessage: boolean = false
+	for _, log in logHistory do
+		if log.message == message then
+			hasDuplicateMessage = true
+			break
+		end
 	end
 
-	print(message)
+	if not hasDuplicateMessage then
+		print(message)
+	end
+	
 end
 
 
