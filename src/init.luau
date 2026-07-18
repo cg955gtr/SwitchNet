@@ -28,7 +28,7 @@
 
 --!strict
 
-const VERSION: string = "v1.4.2"
+const VERSION: string = "v1.4.3"
 const PRINT_OUTPUT_MESSAGE: boolean = true
 
 --// Services

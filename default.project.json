@@ -1,12 +1,6 @@
 {
   "name": "switchnet",
   "tree": {
-    "$className": "DataModel",
-
-    "ReplicatedStorage": {
-      "SwitchNet": {
-        "$path": "src"
-      }
-    }
+		"$path": "src"
   }
 }
